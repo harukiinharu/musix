@@ -546,7 +546,6 @@ dependencies = [
  "rand",
  "ratatui",
  "rodio",
- "walkdir",
 ]
 
 [[package]]

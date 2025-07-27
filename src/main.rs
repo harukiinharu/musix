@@ -20,7 +20,6 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph},
 };
 use rodio::{Decoder, OutputStreamBuilder, Sink, Source};
-use walkdir::WalkDir;
 
 #[derive(Clone)]
 struct Song {
@@ -314,16 +313,18 @@ fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
 }
 
 fn visit_dir(dir: &PathBuf, songs: &mut Vec<Song>) -> Result<(), Box<dyn std::error::Error>> {
-    for entry in WalkDir::new(dir).follow_links(false).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext.eq_ignore_ascii_case("mp3") {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                visit_dir(&path, songs)?;
+            } else if let Some(extension) = path.extension() {
+                if extension.to_str().unwrap_or("").to_lowercase() == "mp3" {
                     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Unknown").to_string();
-                    songs.push(Song {
-                        name,
-                        path: path.to_path_buf(),
-                    });
+
+                    songs.push(Song { name, path: path.clone() });
                 }
             }
         }
