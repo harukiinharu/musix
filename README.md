@@ -78,11 +78,11 @@ cp /path/to/your/music/*.mp3 ~/Music/
 ├─────────────────────────────────┤
 │ Progress ████████░░░ 02:30/04:15│  ← Progress Bar
 ├─────────────────────────────────┤
-│ ↑/↓: Select | Enter/P: Play    │  ← Controls Help
+│ ↑/↓: Select | Enter/P: Play     │  ← Controls Help
 │ S: Pause/Resume | ←/→: Prev/Next│
-│ </>: Seek ±5s | R: Random      │
+│ </>: Seek ±5s | R: Random       │
 ├─────────────────────────────────┤
-│ Mode: NORMAL | Songs: 5 | ⏵... │  ← Status
+│ Mode: NORMAL | Songs: 20 |      │  ← Status
 └─────────────────────────────────┘
 ```
 
