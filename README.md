@@ -1,4 +1,4 @@
-# Musix
+# MUSIX
 
 A minimalist terminal-based MP3 music player built with Rust.
 
@@ -10,18 +10,20 @@ A minimalist terminal-based MP3 music player built with Rust.
 
 ## Features
 
-- **Beautiful TUI**: Modern terminal interface with cyberpunk green theme
-- **MP3 Playback**: Supports MP3 audio files with high-quality playback
-- **Progress Bar**: Visual progress tracking with elapsed/total time display
-- **Full Controls**: Play, pause, resume, seek, skip, and shuffle
-- **Playback Modes**: Normal and Random shuffle modes
-- **Fast Navigation**: Keyboard-driven interface for quick song selection
+- **Beautiful TUI**: Clean terminal interface with cyberpunk green theme
+- **High-Quality Playback**: MP3 audio support with crystal-clear sound
+- **Visual Progress**: Real-time progress bar with time display
+- **Smart Controls**: Intuitive keyboard controls with popup help (Press **X**)
+- **Smooth Seeking**: Instant seek without playback interruption
+- **Playback Modes**: Normal sequential and random shuffle
+- **Keyboard-Driven**: Lightning-fast keyboard-only interface
 
 ## Quick Start
 
 ### Prerequisites
 
-- Rust 1.70+
+- **Rust 1.70+** - [Install Rust](https://rustup.rs/)
+- **Audio Libraries** (Linux): `libasound2-dev pkg-config`
 
 ### Installation
 
@@ -33,87 +35,117 @@ cd musix
 # Build and run
 cargo run
 
-# Or build release version
+# Or build optimized release version
 cargo build --release
 ./target/release/musix
 ```
 
 ### Setup Music Files
 
-MUSIX searches for MP3 files in these directories (in order):
+MUSIX automatically searches for MP3 files in these directories:
 
-1. `~/Music` (User's music directory)
-2. `./data` (Current directory)
+1. **`~/Music`** - Your system's Music directory
+2. **`./data`** - Local data folder
 
 ```bash
-# Copy your MP3 files to the data directory for testing
+# Option 1: Use local data folder
 mkdir -p ./data
 cp /path/to/your/music/*.mp3 ./data/
 
-# Or use your system's Music directory
+# Option 2: Use system Music directory
 cp /path/to/your/music/*.mp3 ~/Music/
+
+# Option 3: Create symbolic link
+ln -s /path/to/your/music ./data
 ```
 
 ## Controls
 
+> **Tip**: Press **X** anytime to view the interactive controls popup!
+
+### Essential Keys
+
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate song list |
-| `Enter` / `Space` / `P` | Play selected song |
-| `S` | Pause/Resume playback |
-| `←` / `→` | Previous/Next song |
-| `<` / `>` | Seek backward/forward 5 seconds |
-| `R` | Toggle Random mode |
-| `Esc` / `Ctrl+C` | Exit |
+| **`Space/↵`** | **Smart Play** - Play selected song or pause current |
+| **`X`** | **Show/Hide help popup** |
+| **`Esc`** | **Exit** |
 
-## Interface Layout
+### Navigation & Playback
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate songs |
+| `Space/↵` | Play/pause (same functionality) |
+| `←` / `→` | Play previous/next song |
+| `,` / `.` | Seek backward/forward 5 seconds |
+| `<` / `>` | Same as above |
+| `R` | Toggle Random mode |
+
+## Interface
+
+MUSIX features a clean, 4-panel interface that maximizes space for your music:
 
 ```
 ┌─────────────────────────────────┐
-│             MUSIX               │  ← Title
+│             MUSIX               │  ← Title Bar
 ├─────────────────────────────────┤
 │ → ♪ 1. Current Song             │  ← Song List
-│     2. Another Song             │    (with selection)
+│     2. Another Song             │    (Scrollable)
 │     3. Third Song               │
+│     4. More songs...            │
 ├─────────────────────────────────┤
-│ Progress ████████░░░ 02:30/04:15│  ← Progress Bar
+│ ████████████████░░░░ 02:30/04:15│  ← Progress Bar
 ├─────────────────────────────────┤
-│ ↑/↓: Select | Enter/P: Play     │  ← Controls Help
-│ S: Pause/Resume | ←/→: Prev/Next│
-│ </>: Seek ±5s | R: Random       │
-├─────────────────────────────────┤
-│ Mode: NORMAL | Songs: 20 |      │  ← Status
+│ Mode: ___ | Songs: 20 | X: Help │  ← Status & Help
 └─────────────────────────────────┘
 ```
 
-## Visual Indicators
+### Interactive Controls Popup (Press **X**)
 
-- **→** : Currently selected song
-- **♪** : Currently playing song
-- **⏵** : Playing status in status bar
-- **⏸** : Paused status in status bar
+```
+┌─────────────────────────────────┐
+│            CONTROLS             │
+│                                 │
+│ ↑/↓ - Navigate songs            │
+│ Space/↵ - Play Pause            │
+│ ←/→ - Play prev/next song       │
+│ ,/. - Seek ±5 seconds           │
+│ R - Toggle random mode          │
+│ X - Close this popup            │
+│ Esc - Exit application          │
+└─────────────────────────────────┘
+```
 
-## Technical Features
+## Smart Features
+
+### Visual Indicators
+- **`→`** Currently selected song in the list
+- **`♪`** Currently playing song indicator  
+- **Progress Bar** Real-time playback progress with time
 
 ### Playback Modes
+- **Normal Mode**: Sequential playback through your playlist
+- **Random Mode**: Intelligent shuffle (excludes current song)
 
-- **Normal**: Sequential playback through playlist
-- **Random**: Randomly select next song (excluding current)
+### Smart Space/Enter Key
+- **Initial state**: Plays the first selected song
+- **Different song selected**: Plays the selected song immediately
+- **Same song selected**: Toggles play/pause for current song
 
-## Architecture
+## Technical Details
 
-### Core Components
+### Architecture
+- **Player Engine**: State management with smart playback control
+- **Terminal UI**: Ratatui-powered responsive interface  
+- **Audio Engine**: Rodio-based high-quality MP3 processing
+- **Performance**: Efficient seeking without playback interruption
 
-- **Player**: Main playback engine with state management
-- **UI**: Ratatui-based terminal interface with real-time updates
-- **Audio Engine**: Rodio-based MP3 decoding and playback
-
-### Dependencies
-
-- `rodio` - Audio playback and MP3 decoding
-- `ratatui` - Terminal user interface framework
-- `crossterm` - Cross-platform terminal manipulation
-- `rand` - Random number generation for shuffle mode
+### Core Dependencies
+- **`rodio`** - Professional audio playback and MP3 decoding
+- **`ratatui`** - Modern terminal user interface framework
+- **`crossterm`** - Cross-platform terminal control
+- **`rand`** - Cryptographically secure random shuffle
 
 ## Development
 
@@ -122,58 +154,75 @@ cp /path/to/your/music/*.mp3 ~/Music/
 ```
 musix/
 ├── src/
-│   └── main.rs          # Complete application (~730 lines)
+│   └── main.rs          # Complete application (~700 lines)
 ├── data/                # MP3 files (optional)
+├── .github/workflows/   # CI/CD automation
 ├── Cargo.toml          # Dependencies and metadata
-└── README.md           # This file
+├── rustfmt.toml        # Code formatting rules
+└── README.md           # Documentation
 ```
 
-### Building
+### Building & Testing
 
 ```bash
-# Debug build
+# Development build
 cargo build
 
-# Release build (optimized)
+# Optimized release build
 cargo build --release
 
-# Run tests
+# Run all tests
 cargo test
+
+# Code quality checks
+cargo clippy --all-targets --all-features -- -D warnings
+cargo fmt --all -- --check
 ```
 
-### Permission Denied
+## Troubleshooting
 
-**Problem**: Cannot access music directories  
-**Solution**:
+### No Music Files Found
 
-- Check directory permissions: `ls -la ~/Music`
-- Copy files to `./data` directory instead
+**Issue**: `No MP3 files found in any accessible directory`
 
-** Access Apple Music**
-
-Enabling Full Disk Access for Terminal/iTerm2
-
-Step-by-step instructions
-
-1. Click the Apple logo () in the top-left corner and open System Settings (or System Preferences).
-2. Navigate to Privacy & Security in the sidebar.
-3. Scroll down and click Full Disk Access.
-4. Click the lock icon at the bottom-left to unlock the pane (you will need to authenticate as an administrator).  ￼ ￼
-5. Click the "+" button to add an app, then choose Terminal/iTerm2.  ￼
-6. Ensure the checkbox next to Terminal/iTerm2 is enabled.
-7. Exit settings and restart Terminal/iTerm2 for changes to take effect.  
-
-### No MP3 Files Found
-
-**Problem**: "No MP3 files found in any accessible directory"  
-**Solution**:
+**Solutions**:
 ```bash
-# Copy test files
+# Option 1: Copy files to data folder
 mkdir -p ./data
-cp /path/to/music/*.mp3 ./data/
+cp /path/to/your/music/*.mp3 ./data/
 
-# Or create symbolic link
-ln -s /path/to/music ./data
+# Option 2: Create symbolic link
+ln -s /path/to/your/music ./data
+
+# Option 3: Check permissions
+ls -la ~/Music
+```
+
+### macOS Music Access
+
+**Issue**: Cannot access ~/Music directory on macOS
+
+**Solution**: Enable Full Disk Access for your terminal:
+
+1. **System Settings** → **Privacy & Security** → **Full Disk Access**
+2. Click lock icon to unlock settings
+3. Click **+** and add your terminal app (Terminal/iTerm2)
+4. Enable the checkbox
+5. **Restart your terminal**
+
+### Linux Audio Issues
+
+**Issue**: No audio output or initialization errors
+
+**Solutions**:
+```bash
+# Install required audio libraries
+sudo apt-get update
+sudo apt-get install libasound2-dev pkg-config
+
+# For other distributions
+sudo pacman -S alsa-lib pkg-config  # Arch
+sudo dnf install alsa-lib-devel pkgconf  # Fedora
 ```
 
 ## License
@@ -196,4 +245,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with Rust**
+**Built with Claud Code**

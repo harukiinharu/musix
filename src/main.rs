@@ -43,6 +43,7 @@ struct Player {
     playback_start: Option<Instant>,
     song_duration: Option<Duration>,
     seek_offset: Duration,
+    show_controls_popup: bool,
 }
 
 impl Player {
@@ -82,6 +83,7 @@ impl Player {
             playback_start: None,
             song_duration: None,
             seek_offset: Duration::from_secs(0),
+            show_controls_popup: false,
         })
     }
 
@@ -91,6 +93,8 @@ impl Player {
         }
 
         self.current_index = index;
+        self.selected_index = index;
+        self.list_state.select(Some(self.selected_index));
         self.seek_offset = Duration::from_secs(0);
         if let Some(ref sink) = self.sink {
             let song = &self.songs[index];
@@ -130,6 +134,32 @@ impl Player {
             eprintln!("Warning: No audio sink available. Cannot play '{}'", self.songs[index].name);
         }
 
+        Ok(())
+    }
+
+    fn play_or_pause(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // If no songs are loaded, do nothing
+        if self.songs.is_empty() {
+            return Ok(());
+        }
+
+        // If no song has ever been played (initial state), play the selected song
+        if self.playback_start.is_none() && !self.is_playing {
+            self.play_song(self.selected_index)?;
+            return Ok(());
+        }
+
+        // If selected song is different from current playing song, play the selected song
+        if self.selected_index != self.current_index {
+            self.play_song(self.selected_index)?;
+        } else {
+            // If selected song is the same as current playing song, toggle play/pause
+            if self.is_playing {
+                self.pause_playback();
+            } else {
+                self.resume_playback();
+            }
+        }
         Ok(())
     }
 
@@ -338,7 +368,6 @@ fn ui(f: &mut Frame, player: &Player) {
             Constraint::Length(3), // Title
             Constraint::Min(8),    // Song list
             Constraint::Length(3), // Progress bar
-            Constraint::Length(4), // Controls
             Constraint::Length(3), // Status
         ])
         .split(f.area());
@@ -360,10 +389,10 @@ fn ui(f: &mut Frame, player: &Player) {
 
             let content = format!("{playing_indicator}{}. {}", i + 1, song.name);
 
-            let style = if i == player.selected_index {
-                Style::default().fg(PRIMARY_COLOR)
-            } else if i == player.current_index && player.is_playing {
+            let style = if i == player.current_index && player.is_playing {
                 Style::default().fg(HIGHLIGHT_COLOR).add_modifier(Modifier::BOLD)
+            } else if i == player.selected_index {
+                Style::default().fg(PRIMARY_COLOR)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -416,48 +445,10 @@ fn ui(f: &mut Frame, player: &Player) {
         .label(progress_label);
     f.render_widget(progress_bar, chunks[2]);
 
-    // Controls
-    let controls = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled("↑/↓", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Select | "),
-            Span::styled("Enter/Space/P", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Play | "),
-            Span::styled("S", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Pause/Resume | "),
-            Span::styled("←/→", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Prev/Next"),
-        ]),
-        Line::from(vec![
-            Span::styled("</>", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Seek ±5s | "),
-            Span::styled("R", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Random | "),
-            Span::styled("Esc", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Exit"),
-        ]),
-    ])
-    .alignment(Alignment::Center)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Controls")
-            .border_style(Style::default().fg(PRIMARY_COLOR)),
-    );
-    f.render_widget(controls, chunks[3]);
-
     // Status
     let mode_text = if player.random_mode { "RANDOM" } else { "NORMAL" };
 
-    let song_text = if player.songs.is_empty() {
-        String::new()
-    } else if player.is_playing {
-        format!("⏵ {}", player.songs[player.current_index].name)
-    } else {
-        format!("⏸ {}", player.songs[player.current_index].name)
-    };
-
-    let status_text = format!("  Mode: {} | Songs: {} | {}  ", mode_text, player.songs.len(), song_text);
+    let status_text = format!("  Mode: {} | Songs: {} | X: Help  ", mode_text, player.songs.len());
 
     let status = Paragraph::new(status_text)
         .style(Style::default().fg(Color::White))
@@ -468,7 +459,75 @@ fn ui(f: &mut Frame, player: &Player) {
                 .title("Status")
                 .border_style(Style::default().fg(PRIMARY_COLOR)),
         );
-    f.render_widget(status, chunks[4]);
+    f.render_widget(status, chunks[3]);
+
+    // Controls popup
+    if player.show_controls_popup {
+        let popup_area = centered_rect(60, 70, f.area());
+        f.render_widget(ratatui::widgets::Clear, popup_area);
+
+        let controls_popup = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(vec![Span::styled("CONTROLS", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))]).alignment(Alignment::Center),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(" ↑/↓", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Navigate songs"),
+            ]),
+            Line::from(vec![
+                Span::styled(" Space/↵", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Play Pause"),
+            ]),
+            Line::from(vec![
+                Span::styled(" ←/→", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Play prev/next song"),
+            ]),
+            Line::from(vec![
+                Span::styled(" ,/.", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Seek backward/forward 5s"),
+            ]),
+            Line::from(vec![
+                Span::styled(" R  ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Toggle random mode"),
+            ]),
+            Line::from(vec![
+                Span::styled(" X  " , Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Close this popup"),
+            ]),
+            Line::from(vec![
+                Span::styled(" Esc", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Exit application"),
+            ]),
+        ])
+        .alignment(Alignment::Left)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Help")
+                .border_style(Style::default().fg(PRIMARY_COLOR)),
+        );
+        f.render_widget(controls_popup, popup_area);
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::prelude::Rect) -> ratatui::prelude::Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
 
 fn run_player() -> Result<(), Box<dyn std::error::Error>> {
@@ -562,11 +621,11 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                     }
 
                     KeyEvent {
-                        code: KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('p'),
+                        code: KeyCode::Enter | KeyCode::Char(' '),
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.play_song(player.selected_index)?;
+                        let _ = player.play_or_pause();
                     }
 
                     KeyEvent {
@@ -594,15 +653,11 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                     }
 
                     KeyEvent {
-                        code: KeyCode::Char('s'),
+                        code: KeyCode::Char('x'),
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        if player.is_playing {
-                            player.pause_playback();
-                        } else {
-                            player.resume_playback();
-                        }
+                        player.show_controls_popup = !player.show_controls_popup;
                     }
 
                     KeyEvent {
