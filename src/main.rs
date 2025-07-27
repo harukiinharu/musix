@@ -371,7 +371,8 @@ fn ui(f: &mut Frame, player: &Player) {
 
     let songs_list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Songs"))
-        .highlight_style(Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD));
+        .highlight_style(Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))
+        .scroll_padding(1);
 
     f.render_stateful_widget(songs_list, chunks[1], &mut player.list_state.clone());
 
