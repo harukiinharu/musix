@@ -8,7 +8,7 @@ use std::{
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode, SetTitle},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode},
 };
 use rand::prelude::*;
 use ratatui::{
@@ -52,13 +52,13 @@ impl Player {
         if self.songs.is_empty() {
             return;
         }
-        
+
         let title = if self.is_playing {
             format!("MUSIX - ♪ {}", self.songs[self.current_index].name)
         } else {
             format!("MUSIX - {} (Paused)", self.songs[self.current_index].name)
         };
-        
+
         let _ = execute!(io::stdout(), SetTitle(&title));
     }
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
@@ -72,23 +72,21 @@ impl Player {
 
         // Initialize audio system with Rodio 0.20 API
         let (stream, stream_handle, sink) = match OutputStream::try_default() {
-            Ok((stream, stream_handle)) => { 
-                match Sink::try_new(&stream_handle) {
-                    Ok(sink) => (
+            Ok((stream, stream_handle)) => match Sink::try_new(&stream_handle) {
+                Ok(sink) => (
+                    Some(Box::new(stream) as Box<dyn std::any::Any>),
+                    Some(Box::new(stream_handle) as Box<dyn std::any::Any>),
+                    Some(Arc::new(Mutex::new(sink))),
+                ),
+                Err(e) => {
+                    eprintln!("Warning: Could not create audio sink: {e}");
+                    (
                         Some(Box::new(stream) as Box<dyn std::any::Any>),
-                        Some(Box::new(stream_handle) as Box<dyn std::any::Any>), 
-                        Some(Arc::new(Mutex::new(sink)))
-                    ),
-                    Err(e) => {
-                        eprintln!("Warning: Could not create audio sink: {e}");
-                        (
-                            Some(Box::new(stream) as Box<dyn std::any::Any>),
-                            Some(Box::new(stream_handle) as Box<dyn std::any::Any>), 
-                            None
-                        )
-                    }
+                        Some(Box::new(stream_handle) as Box<dyn std::any::Any>),
+                        None,
+                    )
                 }
-            }
+            },
             Err(e) => {
                 eprintln!("Warning: Could not initialize audio output: {e}");
                 eprintln!("The application will continue but audio playback may not work.");
@@ -112,14 +110,14 @@ impl Player {
             seek_offset: Duration::from_secs(0),
             show_controls_popup: false,
         };
-        
+
         // Set initial terminal title
         if !player.songs.is_empty() {
             let _ = execute!(io::stdout(), SetTitle(&format!("MUSIX - {}", player.songs[0].name)));
         } else {
             let _ = execute!(io::stdout(), SetTitle("MUSIX"));
         }
-        
+
         Ok(player)
     }
 
@@ -629,7 +627,7 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
-    
+
     // Reset terminal title
     let _ = execute!(io::stdout(), SetTitle("Terminal"));
 
