@@ -19,7 +19,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph},
 };
-use rodio::{Decoder, OutputStreamBuilder, Sink, Source};
+use rodio::{decoder::DecoderBuilder, Decoder, OutputStreamBuilder, Sink, Source};
 
 #[derive(Clone)]
 struct Song {
@@ -92,7 +92,6 @@ impl Player {
 
         self.current_index = index;
         self.seek_offset = Duration::from_secs(0);
-
         if let Some(ref sink) = self.sink {
             let song = &self.songs[index];
             match std::fs::File::open(&song.path) {
@@ -238,7 +237,7 @@ impl Player {
     }
 
     fn seek(&mut self, offset_seconds: i32) {
-        if !self.songs.is_empty() {
+        if !self.songs.is_empty() && self.is_playing {
             // Get current actual position (including elapsed time since playback start)
             let current_position = if let Some(start_time) = self.playback_start {
                 self.seek_offset + start_time.elapsed()
@@ -247,31 +246,31 @@ impl Player {
             };
 
             let seek_duration = Duration::from_secs(offset_seconds.abs() as u64);
-
-            if offset_seconds < 0 {
+            let new_position = if offset_seconds < 0 {
                 // Seek backward
                 if current_position > seek_duration {
-                    self.seek_offset = current_position - seek_duration;
+                    current_position - seek_duration
                 } else {
-                    self.seek_offset = Duration::from_secs(0);
+                    Duration::from_secs(0)
                 }
             } else {
                 // Seek forward
-                self.seek_offset = current_position + seek_duration;
-
+                let new_pos = current_position + seek_duration;
                 // Don't seek past song duration if we know it
                 if let Some(duration) = self.song_duration {
-                    if self.seek_offset >= duration {
-                        self.seek_offset = duration.saturating_sub(Duration::from_secs(1));
+                    if new_pos >= duration {
+                        duration.saturating_sub(Duration::from_secs(1))
+                    } else {
+                        new_pos
                     }
+                } else {
+                    new_pos
                 }
-            }
+            };
 
-            // Restart playback with new offset if currently playing
-            if self.is_playing {
-                // Restart the song from the new position
-                let _ = self.play_song(self.current_index);
-            }
+            // Update seek offset and reset playback start time to simulate seeking
+            self.seek_offset = new_position;
+            self.playback_start = Some(Instant::now());
         }
     }
 }
@@ -344,7 +343,7 @@ fn ui(f: &mut Frame, player: &Player) {
     let title = Paragraph::new("MUSIX")
         .style(Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL));
+        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(PRIMARY_COLOR)));
     f.render_widget(title, chunks[0]);
 
     // Song list
@@ -370,7 +369,7 @@ fn ui(f: &mut Frame, player: &Player) {
         .collect();
 
     let songs_list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Songs"))
+        .block(Block::default().borders(Borders::ALL).title("Songs").border_style(Style::default().fg(PRIMARY_COLOR)))
         .highlight_style(Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))
         .scroll_padding(1);
 
@@ -397,7 +396,7 @@ fn ui(f: &mut Frame, player: &Player) {
     let progress_label = Span::styled(progress_label_text, Style::default().fg(Color::White));
 
     let progress_bar = Gauge::default()
-        .block(Block::default().borders(Borders::ALL).title("Progress"))
+        .block(Block::default().borders(Borders::ALL).title("Progress").border_style(Style::default().fg(PRIMARY_COLOR)))
         .gauge_style(Style::default().fg(PRIMARY_COLOR))
         .ratio(progress_ratio)
         .label(progress_label);
@@ -425,7 +424,7 @@ fn ui(f: &mut Frame, player: &Player) {
         ]),
     ])
     .alignment(Alignment::Center)
-    .block(Block::default().borders(Borders::ALL).title("Controls"));
+    .block(Block::default().borders(Borders::ALL).title("Controls").border_style(Style::default().fg(PRIMARY_COLOR)));
     f.render_widget(controls, chunks[3]);
 
     // Status
@@ -446,7 +445,7 @@ fn ui(f: &mut Frame, player: &Player) {
     let status = Paragraph::new(status_text)
         .style(Style::default().fg(Color::White))
         .alignment(Alignment::Left)
-        .block(Block::default().borders(Borders::ALL).title("Status"));
+        .block(Block::default().borders(Borders::ALL).title("Status").border_style(Style::default().fg(PRIMARY_COLOR)));
     f.render_widget(status, chunks[4]);
 }
 
