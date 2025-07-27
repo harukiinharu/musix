@@ -19,7 +19,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph},
 };
-use rodio::{Decoder, OutputStreamBuilder, Sink, Source};
+use rodio::{Decoder, OutputStream, Sink, Source};
 
 #[derive(Clone)]
 struct Song {
@@ -34,6 +34,7 @@ struct Player {
     songs: Vec<Song>,
     current_index: usize,
     selected_index: usize,
+    _stream: Option<Box<dyn std::any::Any>>,
     _stream_handle: Option<Box<dyn std::any::Any>>,
     sink: Option<Arc<Mutex<Sink>>>,
     is_playing: bool,
@@ -56,16 +57,29 @@ impl Player {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
-        // Initialize audio system with Rodio 0.21 API
-        let (stream_handle, sink) = match OutputStreamBuilder::open_default_stream() {
-            Ok(stream_handle) => { 
-                let sink = Sink::connect_new(stream_handle.mixer());
-                (Some(Box::new(stream_handle) as Box<dyn std::any::Any>), Some(Arc::new(Mutex::new(sink))))
+        // Initialize audio system with Rodio 0.20 API
+        let (stream, stream_handle, sink) = match OutputStream::try_default() {
+            Ok((stream, stream_handle)) => { 
+                match Sink::try_new(&stream_handle) {
+                    Ok(sink) => (
+                        Some(Box::new(stream) as Box<dyn std::any::Any>),
+                        Some(Box::new(stream_handle) as Box<dyn std::any::Any>), 
+                        Some(Arc::new(Mutex::new(sink)))
+                    ),
+                    Err(e) => {
+                        eprintln!("Warning: Could not create audio sink: {e}");
+                        (
+                            Some(Box::new(stream) as Box<dyn std::any::Any>),
+                            Some(Box::new(stream_handle) as Box<dyn std::any::Any>), 
+                            None
+                        )
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("Warning: Could not initialize audio output: {e}");
                 eprintln!("The application will continue but audio playback may not work.");
-                (None, None)
+                (None, None, None)
             }
         };
 
@@ -73,6 +87,7 @@ impl Player {
             songs,
             current_index: 0,
             selected_index: 0,
+            _stream: stream,
             _stream_handle: stream_handle,
             sink,
             is_playing: false,
@@ -99,7 +114,7 @@ impl Player {
             let song = &self.songs[index];
             match std::fs::File::open(&song.path) {
                 Ok(file) => {
-                    match Decoder::try_from(file) {
+                    match Decoder::new(file) {
                         Ok(source) => {
                             // Try to get duration from the source
                             let total_duration = source.total_duration();
