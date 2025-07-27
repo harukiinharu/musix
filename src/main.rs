@@ -48,6 +48,10 @@ struct Player {
 impl Player {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let songs = load_mp3_files()?;
+        if songs.is_empty() {
+            return Err("No MP3 files found".into());
+        }
+
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
@@ -277,28 +281,20 @@ fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
 
     // Try multiple directories in order of preference
     let potential_dirs = vec![
-        // Current directory ./data (for development/testing)
-        // User's Music directory
         {
+            // User's Music directory
             let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
             PathBuf::from(format!("{}/Music", home_dir))
         },
         PathBuf::from("./data"),
-        // Alternative common music directories
-        // PathBuf::from("/tmp/music"),
-        // PathBuf::from("./music"),
-        // // Current directory as last resort
-        // PathBuf::from("."),
     ];
 
     for data_dir in potential_dirs {
         if data_dir.exists() {
             match visit_dir(&data_dir, &mut songs) {
                 Ok(_) => {
-                    if !songs.is_empty() {
-                        eprintln!("Loaded {} MP3 files from: {:?}", songs.len(), data_dir);
-                        break;
-                    }
+                    eprintln!("Loaded {} MP3 files from: {:?}", songs.len(), data_dir);
+                    // break;
                 }
                 Err(e) => {
                     eprintln!("Warning: Could not access directory {:?}: {}", data_dir, e);
@@ -411,7 +407,7 @@ fn ui(f: &mut Frame, player: &Player) {
         Line::from(vec![
             Span::styled("↑/↓", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
             Span::raw(": Select | "),
-            Span::styled("Enter/P", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::styled("Enter/Space/P", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
             Span::raw(": Play | "),
             Span::styled("S", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
             Span::raw(": Pause/Resume | "),
@@ -444,7 +440,7 @@ fn ui(f: &mut Frame, player: &Player) {
         }
     };
 
-    let status_text = format!(" Mode: {} | Songs: {} | {}  ", mode_text, player.songs.len(), song_text);
+    let status_text = format!("  Mode: {} | Songs: {} | {}  ", mode_text, player.songs.len(), song_text);
 
     let status = Paragraph::new(status_text)
         .style(Style::default().fg(Color::White))
@@ -466,15 +462,11 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     if player.songs.is_empty() {
         println!("No MP3 files found in any accessible directory.");
         println!("MUSIX searched for MP3 files in:");
-        println!("  - ./data (current directory)");
         println!("  - ~/Music (user's music directory)");
-        println!("  - /tmp/music");
-        println!("  - ./music");
-        println!("  - . (current directory)");
+        println!("  - ./data (current directory)");
         println!();
         println!("To test MUSIX, you can:");
-        println!("  1. Copy MP3 files to ./data directory");
-        println!("  2. Or run: mkdir -p ./data && cp /path/to/music/*.mp3 ./data/");
+        println!("Copy MP3 files to ./data directory");
         return Ok(());
     }
 
@@ -549,12 +541,7 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         }
 
                         KeyEvent {
-                            code: KeyCode::Enter,
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        }
-                        | KeyEvent {
-                            code: KeyCode::Char('p'),
+                            code: KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('p'),
                             modifiers: KeyModifiers::NONE,
                             ..
                         } => {
