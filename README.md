@@ -155,13 +155,13 @@ Enabling Full Disk Access for Terminal/iTerm2
 
 Step-by-step instructions
 
-1.Click the Apple logo () in the top-left corner and open System Settings (or System Preferences).
-2.Navigate to Privacy & Security in the sidebar.
-3.Scroll down and click Full Disk Access.
-4.Click the lock icon at the bottom-left to unlock the pane (you will need to authenticate as an administrator).  ￼ ￼
-5.Click the "+" button to add an app, then choose Terminal/iTerm2.  ￼
-6.Ensure the checkbox next to Terminal/iTerm2 is enabled.
-7.Exit settings and restart Terminal/iTerm2 for changes to take effect.  
+1. Click the Apple logo () in the top-left corner and open System Settings (or System Preferences).
+2. Navigate to Privacy & Security in the sidebar.
+3. Scroll down and click Full Disk Access.
+4. Click the lock icon at the bottom-left to unlock the pane (you will need to authenticate as an administrator).  ￼ ￼
+5. Click the "+" button to add an app, then choose Terminal/iTerm2.  ￼
+6. Ensure the checkbox next to Terminal/iTerm2 is enabled.
+7. Exit settings and restart Terminal/iTerm2 for changes to take effect.  
 
 ### No MP3 Files Found
 
