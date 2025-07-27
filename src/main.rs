@@ -19,7 +19,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph},
 };
-use rodio::{decoder::DecoderBuilder, Decoder, OutputStreamBuilder, Sink, Source};
+use rodio::{Decoder, OutputStreamBuilder, Sink, Source};
 
 #[derive(Clone)]
 struct Song {
@@ -58,12 +58,12 @@ impl Player {
         // Initialize audio system with Rodio 0.21 API
         let (stream_handle, sink) = match OutputStreamBuilder::open_default_stream() {
             Ok(stream_handle) => {
-                let sink = Sink::connect_new(&stream_handle.mixer());
+                let sink = Sink::connect_new(stream_handle.mixer());
                 eprintln!("Audio system initialized successfully.");
                 (Some(Box::new(stream_handle) as Box<dyn std::any::Any>), Some(Arc::new(Mutex::new(sink))))
             }
             Err(e) => {
-                eprintln!("Warning: Could not initialize audio output: {}", e);
+                eprintln!("Warning: Could not initialize audio output: {e}");
                 eprintln!("The application will continue but audio playback may not work.");
                 (None, None)
             }
@@ -118,12 +118,12 @@ impl Player {
                             self.song_duration = total_duration;
                         }
                         Err(e) => {
-                            eprintln!("Warning: Could not decode audio file '{}': {}", song.name, e);
+                            eprintln!("Warning: Could not decode audio file '{}': {e}", song.name);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Could not open audio file '{}': {}", song.name, e);
+                    eprintln!("Warning: Could not open audio file '{}': {e}", song.name);
                 }
             }
         } else {
@@ -206,7 +206,7 @@ impl Player {
         let total_seconds = duration.as_secs();
         let minutes = total_seconds / 60;
         let seconds = total_seconds % 60;
-        format!("{:02}:{:02}", minutes, seconds)
+        format!("{minutes:02}:{seconds:02}")
     }
 
     fn pause_playback(&mut self) {
@@ -246,7 +246,7 @@ impl Player {
                     self.seek_offset
                 };
 
-                let seek_duration = Duration::from_secs(offset_seconds.abs() as u64);
+                let seek_duration = Duration::from_secs(offset_seconds.unsigned_abs().into());
                 let new_position = if offset_seconds < 0 {
                     // Seek backward
                     if current_position > seek_duration {
@@ -287,7 +287,7 @@ fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
         {
             // User's Music directory
             let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(format!("{}/Music", home_dir))
+            PathBuf::from(format!("{home_dir}/Music"))
         },
         PathBuf::from("./data"),
     ];
@@ -296,11 +296,11 @@ fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
         if data_dir.exists() {
             match visit_dir(&data_dir, &mut songs) {
                 Ok(_) => {
-                    eprintln!("Loaded {} MP3 files from: {:?}", songs.len(), data_dir);
+                    eprintln!("Loaded {} MP3 files from: {data_dir:?}", songs.len());
                     // break;
                 }
                 Err(e) => {
-                    eprintln!("Warning: Could not access directory {:?}: {}", data_dir, e);
+                    eprintln!("Warning: Could not access directory {data_dir:?}: {e}");
                     continue;
                 }
             }
@@ -358,7 +358,7 @@ fn ui(f: &mut Frame, player: &Player) {
         .map(|(i, song)| {
             let playing_indicator = if i == player.current_index && player.is_playing { "♪ " } else { "  " };
 
-            let content = format!("{}{}. {}", playing_indicator, i + 1, song.name);
+            let content = format!("{playing_indicator}{}. {}", i + 1, song.name);
 
             let style = if i == player.selected_index {
                 Style::default().fg(PRIMARY_COLOR)
@@ -373,7 +373,12 @@ fn ui(f: &mut Frame, player: &Player) {
         .collect();
 
     let songs_list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Songs").border_style(Style::default().fg(PRIMARY_COLOR)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Songs")
+                .border_style(Style::default().fg(PRIMARY_COLOR)),
+        )
         .highlight_style(Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))
         .scroll_padding(1);
 
@@ -394,13 +399,18 @@ fn ui(f: &mut Frame, player: &Player) {
     let progress_label_text = if let Some(duration) = total {
         format!("{}/{}", Player::format_duration(elapsed), Player::format_duration(duration))
     } else {
-        format!("{}", Player::format_duration(elapsed))
+        Player::format_duration(elapsed)
     };
 
     let progress_label = Span::styled(progress_label_text, Style::default().fg(Color::White));
 
     let progress_bar = Gauge::default()
-        .block(Block::default().borders(Borders::ALL).title("Progress").border_style(Style::default().fg(PRIMARY_COLOR)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Progress")
+                .border_style(Style::default().fg(PRIMARY_COLOR)),
+        )
         .gauge_style(Style::default().fg(PRIMARY_COLOR))
         .ratio(progress_ratio)
         .label(progress_label);
@@ -428,7 +438,12 @@ fn ui(f: &mut Frame, player: &Player) {
         ]),
     ])
     .alignment(Alignment::Center)
-    .block(Block::default().borders(Borders::ALL).title("Controls").border_style(Style::default().fg(PRIMARY_COLOR)));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Controls")
+            .border_style(Style::default().fg(PRIMARY_COLOR)),
+    );
     f.render_widget(controls, chunks[3]);
 
     // Status
@@ -436,12 +451,10 @@ fn ui(f: &mut Frame, player: &Player) {
 
     let song_text = if player.songs.is_empty() {
         String::new()
+    } else if player.is_playing {
+        format!("⏵ {}", player.songs[player.current_index].name)
     } else {
-        if player.is_playing {
-            format!("⏵ {}", player.songs[player.current_index].name)
-        } else {
-            format!("⏸ {}", player.songs[player.current_index].name)
-        }
+        format!("⏸ {}", player.songs[player.current_index].name)
     };
 
     let status_text = format!("  Mode: {} | Songs: {} | {}  ", mode_text, player.songs.len(), song_text);
@@ -449,7 +462,12 @@ fn ui(f: &mut Frame, player: &Player) {
     let status = Paragraph::new(status_text)
         .style(Style::default().fg(Color::White))
         .alignment(Alignment::Left)
-        .block(Block::default().borders(Borders::ALL).title("Status").border_style(Style::default().fg(PRIMARY_COLOR)));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Status")
+                .border_style(Style::default().fg(PRIMARY_COLOR)),
+        );
     f.render_widget(status, chunks[4]);
 }
 
@@ -457,8 +475,8 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     let mut player = match Player::new() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Player initialization failed: {}", e);
-            eprintln!("Error details: {:?}", e);
+            eprintln!("Player initialization failed: {e}");
+            eprintln!("Error details: {e:?}");
             std::process::exit(1);
         }
     };
@@ -477,7 +495,7 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     match enable_raw_mode() {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to enable raw mode: {}", e);
+            eprintln!("Failed to enable raw mode: {e}");
             return Err(e.into());
         }
     }
@@ -486,7 +504,7 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     match execute!(stdout, EnterAlternateScreen) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to enter alternate screen: {}", e);
+            eprintln!("Failed to enter alternate screen: {e}");
             return Err(e.into());
         }
     }
@@ -495,7 +513,7 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = match Terminal::new(backend) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Failed to create terminal: {}", e);
+            eprintln!("Failed to create terminal: {e}");
             return Err(e.into());
         }
     };
@@ -514,98 +532,96 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
         terminal.draw(|f| ui(f, player))?;
 
         if let Ok(true) = event::poll(Duration::from_millis(100)) {
-            if let Ok(event) = event::read() {
-                if let Event::Key(key) = event {
-                    match key {
-                        KeyEvent {
-                            code: KeyCode::Esc,
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        }
-                        | KeyEvent {
-                            code: KeyCode::Char('c'),
-                            modifiers: KeyModifiers::CONTROL,
-                            ..
-                        } => break,
-
-                        KeyEvent {
-                            code: KeyCode::Up,
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.move_selection(-1);
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Down,
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.move_selection(1);
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('p'),
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.play_song(player.selected_index)?;
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Left,
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.previous_song()?;
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Right,
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.next_song()?;
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Char('r'),
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.random_mode = !player.random_mode;
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Char('s'),
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            if player.is_playing {
-                                player.pause_playback();
-                            } else {
-                                player.resume_playback();
-                            }
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Char('<') | KeyCode::Char(','),
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.seek(-5); // Seek backward 5 seconds
-                        }
-
-                        KeyEvent {
-                            code: KeyCode::Char('>') | KeyCode::Char('.'),
-                            modifiers: KeyModifiers::NONE,
-                            ..
-                        } => {
-                            player.seek(5); // Seek forward 5 seconds
-                        }
-
-                        _ => {}
+            if let Ok(Event::Key(key)) = event::read() {
+                match key {
+                    KeyEvent {
+                        code: KeyCode::Esc,
+                        modifiers: KeyModifiers::NONE,
+                        ..
                     }
+                    | KeyEvent {
+                        code: KeyCode::Char('c'),
+                        modifiers: KeyModifiers::CONTROL,
+                        ..
+                    } => break,
+
+                    KeyEvent {
+                        code: KeyCode::Up,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.move_selection(-1);
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Down,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.move_selection(1);
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('p'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.play_song(player.selected_index)?;
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Left,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.previous_song()?;
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Right,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.next_song()?;
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('r'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.random_mode = !player.random_mode;
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('s'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.is_playing {
+                            player.pause_playback();
+                        } else {
+                            player.resume_playback();
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('<') | KeyCode::Char(','),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.seek(-5); // Seek backward 5 seconds
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('>') | KeyCode::Char('.'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        player.seek(5); // Seek forward 5 seconds
+                    }
+
+                    _ => {}
                 }
             }
         }
@@ -630,7 +646,20 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
 
 fn main() {
     if let Err(e) = run_player() {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_duration() {
+        assert_eq!(Player::format_duration(Duration::from_secs(0)), "00:00");
+        assert_eq!(Player::format_duration(Duration::from_secs(30)), "00:30");
+        assert_eq!(Player::format_duration(Duration::from_secs(60)), "01:00");
+        assert_eq!(Player::format_duration(Duration::from_secs(125)), "02:05");
     }
 }

@@ -2,30 +2,73 @@ name: Release
 on:
   release:
     types: [created]
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   release:
     name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
             archive: zip
           - target: x86_64-unknown-linux-musl
-            archive: tar.gz tar.xz tar.zst
+            os: ubuntu-latest
+            archive: tar.gz
           - target: x86_64-apple-darwin
+            os: macos-latest
             archive: zip
           - target: aarch64-apple-darwin
+            os: macos-latest
             archive: zip
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+          if [[ "${{ matrix.target }}" == *"musl"* ]]; then
+            sudo apt-get install -y musl-tools
+          fi
+      
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      
+      - name: Create archive
+        run: |
+          mkdir -p release
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+              cp target/${{ matrix.target }}/release/musix.exe release/
+              cd release && zip ../musix-${{ matrix.target }}.zip musix.exe
+            else
+              cp target/${{ matrix.target }}/release/musix release/
+              cd release && zip ../musix-${{ matrix.target }}.zip musix
+            fi
+          else
+            cp target/${{ matrix.target }}/release/musix release/
+            cd release && tar -czf ../musix-${{ matrix.target }}.tar.gz musix
+          fi
+      
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./musix-${{ matrix.target }}.${{ matrix.archive == 'zip' && 'zip' || 'tar.gz' }}
+          asset_name: musix-${{ matrix.target }}.${{ matrix.archive == 'zip' && 'zip' || 'tar.gz' }}
+          asset_content_type: application/octet-stream
