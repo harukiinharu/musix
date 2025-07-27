@@ -238,39 +238,43 @@ impl Player {
 
     fn seek(&mut self, offset_seconds: i32) {
         if !self.songs.is_empty() && self.is_playing {
-            // Get current actual position (including elapsed time since playback start)
-            let current_position = if let Some(start_time) = self.playback_start {
-                self.seek_offset + start_time.elapsed()
-            } else {
-                self.seek_offset
-            };
-
-            let seek_duration = Duration::from_secs(offset_seconds.abs() as u64);
-            let new_position = if offset_seconds < 0 {
-                // Seek backward
-                if current_position > seek_duration {
-                    current_position - seek_duration
+            if let Some(ref sink) = self.sink {
+                // Get current actual position (including elapsed time since playback start)
+                let current_position = if let Some(start_time) = self.playback_start {
+                    self.seek_offset + start_time.elapsed()
                 } else {
-                    Duration::from_secs(0)
-                }
-            } else {
-                // Seek forward
-                let new_pos = current_position + seek_duration;
-                // Don't seek past song duration if we know it
-                if let Some(duration) = self.song_duration {
-                    if new_pos >= duration {
-                        duration.saturating_sub(Duration::from_secs(1))
+                    self.seek_offset
+                };
+
+                let seek_duration = Duration::from_secs(offset_seconds.abs() as u64);
+                let new_position = if offset_seconds < 0 {
+                    // Seek backward
+                    if current_position > seek_duration {
+                        current_position - seek_duration
                     } else {
-                        new_pos
+                        Duration::from_secs(0)
                     }
                 } else {
-                    new_pos
-                }
-            };
+                    // Seek forward
+                    current_position + seek_duration
+                };
 
-            // Update seek offset and reset playback start time to simulate seeking
-            self.seek_offset = new_position;
-            self.playback_start = Some(Instant::now());
+                // Try to seek using rodio's try_seek method
+                let sink = sink.lock().unwrap();
+                match sink.try_seek(new_position) {
+                    Ok(()) => {
+                        // Seeking succeeded, update our tracking variables
+                        self.seek_offset = new_position;
+                        self.playback_start = Some(Instant::now());
+                    }
+                    Err(_) => {
+                        // Seeking failed, fall back to restarting from new position
+                        drop(sink);
+                        self.seek_offset = new_position;
+                        let _ = self.play_song(self.current_index);
+                    }
+                }
+            }
         }
     }
 }
