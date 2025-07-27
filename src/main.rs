@@ -58,9 +58,8 @@ impl Player {
 
         // Initialize audio system with Rodio 0.21 API
         let (stream_handle, sink) = match OutputStreamBuilder::open_default_stream() {
-            Ok(stream_handle) => {
+            Ok(stream_handle) => { 
                 let sink = Sink::connect_new(stream_handle.mixer());
-                eprintln!("Audio system initialized successfully.");
                 (Some(Box::new(stream_handle) as Box<dyn std::any::Any>), Some(Arc::new(Mutex::new(sink))))
             }
             Err(e) => {
@@ -326,8 +325,7 @@ fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
         if data_dir.exists() {
             match visit_dir(&data_dir, &mut songs) {
                 Ok(_) => {
-                    eprintln!("Loaded {} MP3 files from: {data_dir:?}", songs.len());
-                    // break;
+                    //eprintln!("Loaded {} MP3 files from: {data_dir:?}", songs.len());  // break;
                 }
                 Err(e) => {
                     eprintln!("Warning: Could not access directory {data_dir:?}: {e}");
@@ -448,20 +446,18 @@ fn ui(f: &mut Frame, player: &Player) {
     // Status
     let mode_text = if player.random_mode { "RANDOM" } else { "NORMAL" };
 
-    let status = Paragraph::new(vec![
-        Line::from(vec![
-            Span::raw(format!("  Mode: {} | Songs: {} | ", mode_text, player.songs.len())),
-            Span::styled("X", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-            Span::raw(": Help  "),
-        ])
-    ])
-        .alignment(Alignment::Left)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Status")
-                .border_style(Style::default().fg(PRIMARY_COLOR)),
-        );
+    let status = Paragraph::new(vec![Line::from(vec![
+        Span::raw(format!("  Mode: {} | Songs: {} | ", mode_text, player.songs.len())),
+        Span::styled("X", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+        Span::raw(": Help  "),
+    ])])
+    .alignment(Alignment::Left)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Status")
+            .border_style(Style::default().fg(PRIMARY_COLOR)),
+    );
     f.render_widget(status, chunks[3]);
 
     // Controls popup
@@ -494,7 +490,7 @@ fn ui(f: &mut Frame, player: &Player) {
                 Span::raw(" - Toggle random mode"),
             ]),
             Line::from(vec![
-                Span::styled(" X  " , Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" X  ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Close this popup"),
             ]),
             Line::from(vec![
@@ -581,6 +577,12 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let result = main_loop(&mut terminal, &mut player);
+
+    // Clean shutdown of audio to prevent warning messages
+    if let Some(ref sink) = player.sink {
+        let sink = sink.lock().unwrap();
+        sink.stop();
+    }
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;

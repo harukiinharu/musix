@@ -6,7 +6,7 @@ A minimalist terminal-based MP3 music player built with Rust.
 ![Terminal](https://img.shields.io/badge/Terminal-UI-green?style=for-the-badge)
 ![Music](https://img.shields.io/badge/MP3-Player-orange?style=for-the-badge)
 
-[![asciicast](https://asciinema.org/a/45pMbZkgYuKoOqfyqeRpoR6BS.svg)](https://asciinema.org/a/45pMbZkgYuKoOqfyqeRpoR6BS)
+[![asciicast](https://asciinema.org/a/730123.svg)](https://asciinema.org/a/730123)
 
 ## Features
 
