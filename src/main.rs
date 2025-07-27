@@ -448,10 +448,13 @@ fn ui(f: &mut Frame, player: &Player) {
     // Status
     let mode_text = if player.random_mode { "RANDOM" } else { "NORMAL" };
 
-    let status_text = format!("  Mode: {} | Songs: {} | X: Help  ", mode_text, player.songs.len());
-
-    let status = Paragraph::new(status_text)
-        .style(Style::default().fg(Color::White))
+    let status = Paragraph::new(vec![
+        Line::from(vec![
+            Span::raw(format!("  Mode: {} | Songs: {} | ", mode_text, player.songs.len())),
+            Span::styled("X", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::raw(": Help  "),
+        ])
+    ])
         .alignment(Alignment::Left)
         .block(
             Block::default()
@@ -463,7 +466,7 @@ fn ui(f: &mut Frame, player: &Player) {
 
     // Controls popup
     if player.show_controls_popup {
-        let popup_area = centered_rect(60, 70, f.area());
+        let popup_area = centered_rect(60, 60, f.area());
         f.render_widget(ratatui::widgets::Clear, popup_area);
 
         let controls_popup = Paragraph::new(vec![
@@ -475,7 +478,7 @@ fn ui(f: &mut Frame, player: &Player) {
                 Span::raw(" - Navigate songs"),
             ]),
             Line::from(vec![
-                Span::styled(" Space/↵", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" ␣/↵", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Play Pause"),
             ]),
             Line::from(vec![
@@ -484,7 +487,7 @@ fn ui(f: &mut Frame, player: &Player) {
             ]),
             Line::from(vec![
                 Span::styled(" ,/.", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-                Span::raw(" - Seek backward/forward 5s"),
+                Span::raw(" - Seek ±5 seconds"),
             ]),
             Line::from(vec![
                 Span::styled(" R  ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
