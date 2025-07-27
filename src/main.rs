@@ -8,7 +8,7 @@ use std::{
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode, SetTitle},
 };
 use rand::prelude::*;
 use ratatui::{
@@ -48,6 +48,19 @@ struct Player {
 }
 
 impl Player {
+    fn update_terminal_title(&self) {
+        if self.songs.is_empty() {
+            return;
+        }
+        
+        let title = if self.is_playing {
+            format!("MUSIX - ♪ {}", self.songs[self.current_index].name)
+        } else {
+            format!("MUSIX - {} (Paused)", self.songs[self.current_index].name)
+        };
+        
+        let _ = execute!(io::stdout(), SetTitle(&title));
+    }
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let songs = load_mp3_files()?;
         if songs.is_empty() {
@@ -83,7 +96,7 @@ impl Player {
             }
         };
 
-        Ok(Player {
+        let player = Player {
             songs,
             current_index: 0,
             selected_index: 0,
@@ -98,7 +111,16 @@ impl Player {
             song_duration: None,
             seek_offset: Duration::from_secs(0),
             show_controls_popup: false,
-        })
+        };
+        
+        // Set initial terminal title
+        if !player.songs.is_empty() {
+            let _ = execute!(io::stdout(), SetTitle(&format!("MUSIX - {}", player.songs[0].name)));
+        } else {
+            let _ = execute!(io::stdout(), SetTitle("MUSIX"));
+        }
+        
+        Ok(player)
     }
 
     fn play_song(&mut self, index: usize) -> Result<(), Box<dyn std::error::Error>> {
@@ -134,6 +156,7 @@ impl Player {
                             self.is_playing = true;
                             self.playback_start = Some(Instant::now());
                             self.song_duration = total_duration;
+                            self.update_terminal_title();
                         }
                         Err(e) => {
                             eprintln!("Warning: Could not decode audio file '{}': {e}", song.name);
@@ -170,8 +193,10 @@ impl Player {
             // If selected song is the same as current playing song, toggle play/pause
             if self.is_playing {
                 self.pause_playback();
+                self.update_terminal_title();
             } else {
                 self.resume_playback();
+                self.update_terminal_title();
             }
         }
         Ok(())
@@ -266,6 +291,7 @@ impl Player {
             }
             self.is_playing = false;
             self.playback_start = None;
+            self.update_terminal_title();
         }
     }
 
@@ -276,6 +302,7 @@ impl Player {
                 sink.play();
                 self.is_playing = true;
                 self.playback_start = Some(Instant::now());
+                self.update_terminal_title();
             }
         }
     }
@@ -602,6 +629,9 @@ fn run_player() -> Result<(), Box<dyn std::error::Error>> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
+    
+    // Reset terminal title
+    let _ = execute!(io::stdout(), SetTitle("Terminal"));
 
     result
 }
