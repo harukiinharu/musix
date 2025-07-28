@@ -10,7 +10,6 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode},
 };
-use rand::prelude::*;
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -206,13 +205,17 @@ impl Player {
         }
 
         let next_index = if self.random_mode {
-            let mut rng = rand::rng();
+            // Simple random selection using timestamp
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as usize;
             let mut indices: Vec<usize> = (0..self.songs.len()).collect();
-            indices.remove(self.current_index);
+            indices.retain(|&i| i != self.current_index);
             if indices.is_empty() {
                 self.current_index
             } else {
-                *indices.choose(&mut rng).unwrap()
+                indices[timestamp % indices.len()]
             }
         } else if self.current_index + 1 >= self.songs.len() {
             if self.loop_mode { 0 } else { self.current_index }
@@ -229,13 +232,17 @@ impl Player {
         }
 
         let prev_index = if self.random_mode {
-            let mut rng = rand::rng();
+            // Simple random selection using timestamp
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as usize;
             let mut indices: Vec<usize> = (0..self.songs.len()).collect();
-            indices.remove(self.current_index);
+            indices.retain(|&i| i != self.current_index);
             if indices.is_empty() {
                 self.current_index
             } else {
-                *indices.choose_mut(&mut rng).unwrap()
+                indices[timestamp % indices.len()]
             }
         } else if self.current_index == 0 {
             if self.loop_mode { self.songs.len() - 1 } else { 0 }
@@ -463,13 +470,15 @@ fn ui(f: &mut Frame, player: &Player) {
         0.0
     };
 
+    
     let progress_label_text = if let Some(duration) = total {
-        format!("{}/{}", Player::format_duration(elapsed), Player::format_duration(duration))
+        format!(" {}/{} ", Player::format_duration(elapsed), Player::format_duration(duration))
     } else {
-        Player::format_duration(elapsed)
+        format!(" {} ", Player::format_duration(elapsed))
     };
 
-    let progress_label = Span::styled(progress_label_text, Style::default().fg(Color::White));
+    let progress_bar_style = Style::default().fg(PRIMARY_COLOR).bg(Color::default());
+    let progress_label = Span::styled(progress_label_text, progress_bar_style);
 
     let progress_bar = Gauge::default()
         .block(
@@ -478,7 +487,7 @@ fn ui(f: &mut Frame, player: &Player) {
                 .title("Progress")
                 .border_style(Style::default().fg(PRIMARY_COLOR)),
         )
-        .gauge_style(Style::default().fg(PRIMARY_COLOR))
+        .gauge_style(progress_bar_style)
         .ratio(progress_ratio)
         .label(progress_label);
     f.render_widget(progress_bar, chunks[2]);
