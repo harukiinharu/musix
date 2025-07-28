@@ -13,10 +13,12 @@ A minimalist terminal-based MP3 music player built with Rust.
 - **Beautiful TUI**: Clean terminal interface with cyberpunk green theme
 - **High-Quality Playback**: MP3 audio support with crystal-clear sound
 - **Visual Progress**: Real-time progress bar with time display
-- **Smart Controls**: Intuitive keyboard controls with popup help (Press **X**)
+- **Smart Controls**: Intuitive keyboard controls with popup help
 - **Smooth Seeking**: Instant seek without playback interruption
 - **Playback Modes**: Normal sequential and random shuffle
 - **Keyboard-Driven**: Lightning-fast keyboard-only interface
+- **Fuzzy Search**: Real-time search with `/` key - find songs instantly
+- **Vim-Style Navigation**: Full vim keybinding support (hjkl, gg/G, n/N, q)
 
 ## Quick Start
 
@@ -40,6 +42,15 @@ cargo build --release
 ./target/release/musix
 ```
 
+### Quick Usage
+1. **Start the player**: `cargo run`
+2. **Navigate**: Use `j/k` or arrow keys to browse songs
+3. **Search**: Press `/` and type to find songs instantly
+4. **Play**: Press `Enter` or `Space` to play selected song
+5. **Jump**: Use `gg` (first song) or `G` (last song)
+6. **Help**: Press `x` to see all controls
+7. **Quit**: Press `q` or `Esc` to exit
+
 ### Setup Music Files
 
 MUSIX automatically searches for MP3 files in these directories:
@@ -61,26 +72,40 @@ ln -s /path/to/your/music ./data
 
 ## Controls
 
-> **Tip**: Press **X** anytime to view the interactive controls popup!
+> **Tip**: Press **x** anytime to view the interactive controls popup!
 
 ### Essential Keys
 
 | Key | Action |
 |-----|--------|
 | **`Space/↵`** | **Smart Play** - Play selected song or pause current |
-| **`X`** | **Show/Hide help popup** |
-| **`Esc`** | **Exit** |
+| **`/`** | **Search Mode** - Enter fuzzy search |
+| **`x`** | **Show/Hide help popup** |
+| **`q/Esc`** | **Exit** |
 
 ### Navigation & Playback
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate songs |
+| `↑/↓` or `j/k` | Navigate songs (vim-style) |
 | `Space/↵` | Play/pause (same functionality) |
-| `←` / `→` | Play previous/next song |
+| `←/→` or `h/l` | Play previous/next song |
+| `gg` / `G` | Jump to first/last song |
 | `,` / `.` | Seek backward/forward 5 seconds |
 | `<` / `>` | Same as above |
-| `R` | Toggle Random mode |
+| `r` | Toggle Random mode |
+
+### Search Mode
+
+| Key | Action |
+|-----|--------|
+| **`/`** | Enter search mode |
+| `n` / `N` | Navigate to next/previous search result |
+| `↑/↓` or `j/k` | Navigate through filtered results |
+| `Enter` | Play selected song and exit search |
+| `Esc` | Exit search mode |
+| `Backspace` | Delete characters from search query |
+| `Any text` | Type to search (fuzzy matching) |
 
 ## Interface
 
@@ -90,39 +115,55 @@ MUSIX features a clean, 4-panel interface that maximizes space for your music:
 ┌─────────────────────────────────┐
 │             MUSIX               │  ← Title Bar
 ├─────────────────────────────────┤
-│ → ♪ 1. Current Song             │  ← Song List
-│     2. Another Song             │    (Scrollable)
-│     3. Third Song               │
-│     4. More songs...            │
+│ Songs - Search: rock            │  ← Song List (Search Mode)
+│ → ♪ 1. Rock Song                │    or "Songs" (Normal Mode)
+│     5. Another Rock Song        │    (Scrollable, Filtered)
+│     12. Rock Ballad             │
+│     More filtered results...    │
 ├─────────────────────────────────┤
 │ ████████████████░░░░ 02:30/04:15│  ← Progress Bar
 ├─────────────────────────────────┤
-│ Mode: ___ | Songs: 20 | X: Help │  ← Status & Help
+│ Search Mode | Songs: 15/120 |.. │  ← Status & Search Info
 └─────────────────────────────────┘
 ```
 
-### Interactive Controls Popup (Press **X**)
+### Interactive Controls Popup (Press **x**)
 
 ```
 ┌─────────────────────────────────┐
 │            CONTROLS             │
 │                                 │
-│ ↑/↓ - Navigate songs            │
-│ Space/↵ - Play Pause            │
-│ ←/→ - Play prev/next song       │
-│ ,/. - Seek ±5 seconds           │
-│ R - Toggle random mode          │
-│ X - Close this popup            │
-│ Esc - Exit application          │
+│ ↑/↓ or j/k - Navigate songs     │
+│ Space/↵    - Play/Pause         │
+│ ←/→ or h/l - Play prev/next song│
+│ gg/G       - Jump to first/last │
+│ /          - Enter search mode  │
+│ n/N        - Next/prev search   │
+│ ,/.        - Seek ±5 seconds    │
+│ r          - Toggle random mode │
+│ q/Esc      - Exit application   │
+│ x          - Close this popup   │
 └─────────────────────────────────┘
 ```
 
 ## Smart Features
 
+### Fuzzy Search
+- **Instant Search**: Press `/` to enter search mode
+- **Real-time Filtering**: Results update as you type
+- **Fuzzy Matching**: Finds songs even with partial or misspelled text
+- **Smart Scoring**: Prioritizes exact matches → substring matches → fuzzy matches
+- **Search Navigation**: Use `n/N` to quickly jump between results
+- **Quick Play**: Press Enter on any result to play immediately
+
+**Example**: Searching "btl" will match "Battle Song", "Beautiful", "Subtitle"
+
 ### Visual Indicators
 - **`→`** Currently selected song in the list
 - **`♪`** Currently playing song indicator  
 - **Progress Bar** Real-time playback progress with time
+- **Search Title** Shows current search query in song list header
+- **Result Count** Displays filtered results count (e.g., "15/120 songs")
 
 ### Playback Modes
 - **Normal Mode**: Sequential playback through your playlist
@@ -132,6 +173,12 @@ MUSIX features a clean, 4-panel interface that maximizes space for your music:
 - **Initial state**: Plays the first selected song
 - **Different song selected**: Plays the selected song immediately
 - **Same song selected**: Toggles play/pause for current song
+
+### Vim-Style Navigation
+- **Movement**: `hjkl` for navigation (h=left, j=down, k=up, l=right)
+- **Jumping**: `gg` jumps to first song, `G` jumps to last song
+- **Search Navigation**: `n/N` for next/previous search results
+- **Quit**: `q` as alternative to Escape
 
 ## Technical Details
 

@@ -47,6 +47,7 @@ struct Player {
     search_mode: bool,
     search_query: String,
     filtered_songs: Vec<usize>,
+    g_pressed: bool,
 }
 
 impl Player {
@@ -116,6 +117,7 @@ impl Player {
             search_mode: false,
             search_query: String::new(),
             filtered_songs,
+            g_pressed: false,
         };
 
         // Set initial terminal title
@@ -467,6 +469,39 @@ impl Player {
         self.selected_index = self.filtered_songs[new_filtered_index];
         self.list_state.select(Some(new_filtered_index));
     }
+
+    fn jump_to_first(&mut self) {
+        if self.songs.is_empty() {
+            return;
+        }
+        
+        if self.search_mode {
+            if !self.filtered_songs.is_empty() {
+                self.selected_index = self.filtered_songs[0];
+                self.list_state.select(Some(0));
+            }
+        } else {
+            self.selected_index = 0;
+            self.list_state.select(Some(0));
+        }
+    }
+
+    fn jump_to_last(&mut self) {
+        if self.songs.is_empty() {
+            return;
+        }
+        
+        if self.search_mode {
+            if !self.filtered_songs.is_empty() {
+                let last_index = self.filtered_songs.len() - 1;
+                self.selected_index = self.filtered_songs[last_index];
+                self.list_state.select(Some(last_index));
+            }
+        } else {
+            self.selected_index = self.songs.len() - 1;
+            self.list_state.select(Some(self.selected_index));
+        }
+    }
 }
 
 fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
@@ -633,7 +668,7 @@ fn ui(f: &mut Frame, player: &Player) {
             Span::raw(format!("  Mode: {} | Songs: {} | ", mode_text, song_count)),
             Span::styled("/", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
             Span::raw(": Search | "),
-            Span::styled("X", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::styled("x", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
             Span::raw(": Help  "),
         ])]
     };
@@ -658,32 +693,44 @@ fn ui(f: &mut Frame, player: &Player) {
             Line::from(vec![Span::styled("CONTROLS", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))]).alignment(Alignment::Center),
             Line::from(""),
             Line::from(vec![
-                Span::styled(" ↑/↓", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" ↑/↓ or j/k", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Navigate songs"),
             ]),
             Line::from(vec![
-                Span::styled(" ␣/↵", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-                Span::raw(" - Play Pause"),
+                Span::styled(" Space/↵   ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Play/Pause"),
             ]),
             Line::from(vec![
-                Span::styled(" ←/→", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" ←/→ or h/l", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Play prev/next song"),
             ]),
             Line::from(vec![
-                Span::styled(" ,/.", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" gg/G      ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Jump to first/last"),
+            ]),
+            Line::from(vec![
+                Span::styled(" /         ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Enter search mode"),
+            ]),
+            Line::from(vec![
+                Span::styled(" n/N       ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Next/prev search"),
+            ]),
+            Line::from(vec![
+                Span::styled(" ,/.       ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Seek ±5 seconds"),
             ]),
             Line::from(vec![
-                Span::styled(" R  ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" R         ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Toggle random mode"),
             ]),
             Line::from(vec![
-                Span::styled(" X  ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-                Span::raw(" - Close this popup"),
+                Span::styled(" q/Esc     ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Exit application"),
             ]),
             Line::from(vec![
-                Span::styled(" Esc", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-                Span::raw(" - Exit application"),
+                Span::styled(" x         ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Close this popup"),
             ]),
         ])
         .alignment(Alignment::Left)
@@ -788,13 +835,20 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
 
         if let Ok(true) = event::poll(Duration::from_millis(100)) {
             if let Ok(Event::Key(key)) = event::read() {
+                // Reset g_pressed state for any key except 'g'
+                if key.code != KeyCode::Char('g') || key.modifiers != KeyModifiers::NONE {
+                    player.g_pressed = false;
+                }
+                
                 match key {
                     KeyEvent {
                         code: KeyCode::Esc,
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        if player.search_mode {
+                        if player.show_controls_popup {
+                            player.show_controls_popup = false;
+                        } else if player.search_mode {
                             player.exit_search_mode();
                         } else {
                             break;
@@ -811,6 +865,10 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         code: KeyCode::Up,
                         modifiers: KeyModifiers::NONE,
                         ..
+                    } | KeyEvent {
+                        code: KeyCode::Char('k'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
                     } => {
                         if player.search_mode {
                             player.move_selection_in_search(-1);
@@ -821,6 +879,10 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
 
                     KeyEvent {
                         code: KeyCode::Down,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } | KeyEvent {
+                        code: KeyCode::Char('j'),
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
@@ -873,6 +935,106 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                     } => {
                         if !player.search_mode {
                             player.next_song()?;
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('h'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('h');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.previous_song()?;
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('l'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('l');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.next_song()?;
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('n'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.move_selection_in_search(1);
+                        }
+                        // In normal mode, 'n' has no special meaning, fall through to default char handler
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('N'),
+                        modifiers: KeyModifiers::SHIFT,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.move_selection_in_search(-1);
+                        }
+                        // In normal mode, 'N' has no special meaning, ignore
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('g'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('g');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            if player.g_pressed {
+                                // Second 'g' - jump to first song
+                                player.jump_to_first();
+                                player.g_pressed = false;
+                            } else {
+                                // First 'g' - set flag and wait for second 'g'
+                                player.g_pressed = true;
+                            }
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('G'),
+                        modifiers: KeyModifiers::SHIFT,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('G');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.jump_to_last();
+                            player.g_pressed = false; // Reset g_pressed state
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('q'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('q');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            break; // Quit the application
                         }
                     }
 
