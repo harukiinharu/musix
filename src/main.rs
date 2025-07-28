@@ -44,6 +44,9 @@ struct Player {
     song_duration: Option<Duration>,
     seek_offset: Duration,
     show_controls_popup: bool,
+    search_mode: bool,
+    search_query: String,
+    filtered_songs: Vec<usize>,
 }
 
 impl Player {
@@ -93,6 +96,8 @@ impl Player {
             }
         };
 
+        let filtered_songs: Vec<usize> = (0..songs.len()).collect();
+        
         let player = Player {
             songs,
             current_index: 0,
@@ -108,6 +113,9 @@ impl Player {
             song_duration: None,
             seek_offset: Duration::from_secs(0),
             show_controls_popup: false,
+            search_mode: false,
+            search_query: String::new(),
+            filtered_songs,
         };
 
         // Set initial terminal title
@@ -353,6 +361,112 @@ impl Player {
             }
         }
     }
+
+    fn fuzzy_search(&mut self, query: &str) {
+        if query.is_empty() {
+            self.filtered_songs = (0..self.songs.len()).collect();
+        } else {
+            let query_lower = query.to_lowercase();
+            let mut matches: Vec<(usize, f32)> = self.songs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, song)| {
+                    let song_name_lower = song.name.to_lowercase();
+                    let score = Self::fuzzy_match_score(&query_lower, &song_name_lower);
+                    if score > 0.0 {
+                        Some((index, score))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            
+            matches.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            self.filtered_songs = matches.into_iter().map(|(index, _)| index).collect();
+        }
+        
+        if !self.filtered_songs.is_empty() {
+            self.selected_index = self.filtered_songs[0];
+            self.list_state.select(Some(0));
+        }
+    }
+
+    fn fuzzy_match_score(query: &str, text: &str) -> f32 {
+        if query.is_empty() {
+            return 1.0;
+        }
+        
+        if text.contains(query) {
+            let exact_match_bonus = if text == query { 2.0 } else { 1.5 };
+            let starts_with_bonus = if text.starts_with(query) { 1.2 } else { 1.0 };
+            return exact_match_bonus * starts_with_bonus;
+        }
+        
+        let mut score = 0.0;
+        let query_chars: Vec<char> = query.chars().collect();
+        let text_chars: Vec<char> = text.chars().collect();
+        let mut query_index = 0;
+        
+        for (text_index, text_char) in text_chars.iter().enumerate() {
+            if query_index < query_chars.len() && *text_char == query_chars[query_index] {
+                score += 1.0 / (text_index as f32 + 1.0);
+                query_index += 1;
+            }
+        }
+        
+        if query_index == query_chars.len() {
+            score / query_chars.len() as f32
+        } else {
+            0.0
+        }
+    }
+
+    fn enter_search_mode(&mut self) {
+        self.search_mode = true;
+        self.search_query.clear();
+        self.fuzzy_search("");
+    }
+
+    fn exit_search_mode(&mut self) {
+        self.search_mode = false;
+        self.search_query.clear();
+        self.filtered_songs = (0..self.songs.len()).collect();
+        self.list_state.select(Some(self.selected_index));
+    }
+
+    fn get_display_songs(&self) -> Vec<(usize, &Song)> {
+        if self.search_mode {
+            self.filtered_songs.iter().map(|&index| (index, &self.songs[index])).collect()
+        } else {
+            self.songs.iter().enumerate().collect()
+        }
+    }
+
+    fn move_selection_in_search(&mut self, direction: i32) {
+        if self.filtered_songs.is_empty() {
+            return;
+        }
+
+        let current_filtered_index = self.filtered_songs
+            .iter()
+            .position(|&index| index == self.selected_index)
+            .unwrap_or(0);
+
+        let new_filtered_index = if direction > 0 {
+            (current_filtered_index + 1) % self.filtered_songs.len()
+        } else if direction < 0 {
+            if current_filtered_index == 0 {
+                self.filtered_songs.len() - 1
+            } else {
+                current_filtered_index - 1
+            }
+        } else {
+            current_filtered_index
+        };
+
+        self.selected_index = self.filtered_songs[new_filtered_index];
+        self.list_state.select(Some(new_filtered_index));
+    }
 }
 
 fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
@@ -425,18 +539,18 @@ fn ui(f: &mut Frame, player: &Player) {
     f.render_widget(title, chunks[0]);
 
     // Song list
-    let items: Vec<ListItem> = player
-        .songs
+    let display_songs = player.get_display_songs();
+    let items: Vec<ListItem> = display_songs
         .iter()
         .enumerate()
-        .map(|(i, song)| {
-            let playing_indicator = if i == player.current_index && player.is_playing { "♪ " } else { "  " };
+        .map(|(_display_index, &(actual_index, song))| {
+            let playing_indicator = if actual_index == player.current_index && player.is_playing { "♪ " } else { "  " };
 
-            let content = format!("{playing_indicator}{}. {}", i + 1, song.name);
+            let content = format!("{playing_indicator}{}. {}", actual_index + 1, song.name);
 
-            let style = if i == player.current_index && player.is_playing {
+            let style = if actual_index == player.current_index && player.is_playing {
                 Style::default().fg(HIGHLIGHT_COLOR).add_modifier(Modifier::BOLD)
-            } else if i == player.selected_index {
+            } else if actual_index == player.selected_index {
                 Style::default().fg(PRIMARY_COLOR)
             } else {
                 Style::default().fg(Color::White)
@@ -446,11 +560,17 @@ fn ui(f: &mut Frame, player: &Player) {
         })
         .collect();
 
+    let songs_title = if player.search_mode {
+        format!("Songs - Search: {}", player.search_query)
+    } else {
+        "Songs".to_string()
+    };
+
     let songs_list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Songs")
+                .title(songs_title)
                 .border_style(Style::default().fg(PRIMARY_COLOR)),
         )
         .highlight_style(Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD))
@@ -494,19 +614,38 @@ fn ui(f: &mut Frame, player: &Player) {
 
     // Status
     let mode_text = if player.random_mode { "RANDOM" } else { "NORMAL" };
+    let song_count = if player.search_mode { 
+        format!("{}/{}", player.filtered_songs.len(), player.songs.len())
+    } else {
+        player.songs.len().to_string()
+    };
 
-    let status = Paragraph::new(vec![Line::from(vec![
-        Span::raw(format!("  Mode: {} | Songs: {} | ", mode_text, player.songs.len())),
-        Span::styled("X", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
-        Span::raw(": Help  "),
-    ])])
-    .alignment(Alignment::Left)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Status")
-            .border_style(Style::default().fg(PRIMARY_COLOR)),
-    );
+    let status_content = if player.search_mode {
+        vec![Line::from(vec![
+            Span::raw(format!("  Search Mode | Songs: {} | ", song_count)),
+            Span::styled("Esc", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::raw(": Exit Search | "),
+            Span::styled("Enter", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::raw(": Play  "),
+        ])]
+    } else {
+        vec![Line::from(vec![
+            Span::raw(format!("  Mode: {} | Songs: {} | ", mode_text, song_count)),
+            Span::styled("/", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::raw(": Search | "),
+            Span::styled("X", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+            Span::raw(": Help  "),
+        ])]
+    };
+
+    let status = Paragraph::new(status_content)
+        .alignment(Alignment::Left)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Status")
+                .border_style(Style::default().fg(PRIMARY_COLOR)),
+        );
     f.render_widget(status, chunks[3]);
 
     // Controls popup
@@ -654,8 +793,15 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         code: KeyCode::Esc,
                         modifiers: KeyModifiers::NONE,
                         ..
+                    } => {
+                        if player.search_mode {
+                            player.exit_search_mode();
+                        } else {
+                            break;
+                        }
                     }
-                    | KeyEvent {
+                    
+                    KeyEvent {
                         code: KeyCode::Char('c'),
                         modifiers: KeyModifiers::CONTROL,
                         ..
@@ -666,7 +812,11 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.move_selection(-1);
+                        if player.search_mode {
+                            player.move_selection_in_search(-1);
+                        } else {
+                            player.move_selection(-1);
+                        }
                     }
 
                     KeyEvent {
@@ -674,15 +824,36 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.move_selection(1);
+                        if player.search_mode {
+                            player.move_selection_in_search(1);
+                        } else {
+                            player.move_selection(1);
+                        }
                     }
 
                     KeyEvent {
-                        code: KeyCode::Enter | KeyCode::Char(' '),
+                        code: KeyCode::Enter,
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
                         let _ = player.play_or_pause();
+                        if player.search_mode {
+                            player.exit_search_mode();
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char(' '),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push(' ');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            let _ = player.play_or_pause();
+                        }
                     }
 
                     KeyEvent {
@@ -690,7 +861,9 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.previous_song()?;
+                        if !player.search_mode {
+                            player.previous_song()?;
+                        }
                     }
 
                     KeyEvent {
@@ -698,7 +871,9 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.next_song()?;
+                        if !player.search_mode {
+                            player.next_song()?;
+                        }
                     }
 
                     KeyEvent {
@@ -706,7 +881,13 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.random_mode = !player.random_mode;
+                        if player.search_mode {
+                            player.search_query.push('r');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.random_mode = !player.random_mode;
+                        }
                     }
 
                     KeyEvent {
@@ -714,7 +895,13 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.show_controls_popup = !player.show_controls_popup;
+                        if player.search_mode {
+                            player.search_query.push('x');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.show_controls_popup = !player.show_controls_popup;
+                        }
                     }
 
                     KeyEvent {
@@ -722,7 +909,14 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.seek(-5); // Seek backward 5 seconds
+                        if player.search_mode {
+                            let c = if key.code == KeyCode::Char('<') { '<' } else { ',' };
+                            player.search_query.push(c);
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.seek(-5); // Seek backward 5 seconds
+                        }
                     }
 
                     KeyEvent {
@@ -730,7 +924,52 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
-                        player.seek(5); // Seek forward 5 seconds
+                        if player.search_mode {
+                            let c = if key.code == KeyCode::Char('>') { '>' } else { '.' };
+                            player.search_query.push(c);
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.seek(5); // Seek forward 5 seconds
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('/'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if !player.search_mode {
+                            player.enter_search_mode();
+                        } else {
+                            player.search_query.push('/');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Backspace,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.pop();
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char(c),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push(c);
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        }
                     }
 
                     _ => {}
