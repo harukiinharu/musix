@@ -721,7 +721,7 @@ fn ui(f: &mut Frame, player: &Player) {
                 Span::raw(" - Seek ±5 seconds"),
             ]),
             Line::from(vec![
-                Span::styled(" R         ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" r         ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Toggle random mode"),
             ]),
             Line::from(vec![
