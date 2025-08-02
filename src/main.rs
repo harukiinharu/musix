@@ -578,11 +578,49 @@ fn get_audio_duration(path: &PathBuf) -> Option<Duration> {
                 None => return None,
             };
 
-            let time_base = track.codec_params.time_base?;
-            let n_frames = track.codec_params.n_frames?;
+            // Try multiple methods to get duration
+            if let (Some(time_base), Some(n_frames)) = (track.codec_params.time_base, track.codec_params.n_frames) {
+                let duration_secs = n_frames as f64 * time_base.numer as f64 / time_base.denom as f64;
+                return Some(Duration::from_secs_f64(duration_secs));
+            }
 
-            let duration_secs = n_frames as f64 * time_base.numer as f64 / time_base.denom as f64;
-            Some(Duration::from_secs_f64(duration_secs))
+            // Alternative method for formats like AAC/FLAC/OPUS that might not have n_frames
+            if let Some(sample_rate) = track.codec_params.sample_rate {
+                // Store codec type to avoid borrowing issues
+                let codec_type = track.codec_params.codec;
+                
+                // Try to read through the entire format to count samples
+                let mut packet_count = 0u64;
+                let mut sample_count = 0u64;
+                
+                loop {
+                    match format.next_packet() {
+                        Ok(_packet) => {
+                            packet_count += 1;
+                            // Estimate samples per packet based on codec
+                            let samples_per_packet = match codec_type {
+                                symphonia::core::codecs::CODEC_TYPE_AAC => 1024,
+                                symphonia::core::codecs::CODEC_TYPE_FLAC => 4096, // Variable, but reasonable estimate
+                                symphonia::core::codecs::CODEC_TYPE_VORBIS => 1024,
+                                _ => 1152, // Default for MP3
+                            };
+                            sample_count += samples_per_packet;
+                        }
+                        Err(_) => break,
+                    }
+                    // Limit iteration to prevent infinite loops on corrupted files
+                    if packet_count > 1000000 {
+                        break;
+                    }
+                }
+                
+                if sample_count > 0 {
+                    let duration_secs = sample_count as f64 / sample_rate as f64;
+                    return Some(Duration::from_secs_f64(duration_secs));
+                }
+            }
+
+            None
         }
         Err(_) => None,
     }
