@@ -876,11 +876,6 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         code: KeyCode::Up,
                         modifiers: KeyModifiers::NONE,
                         ..
-                    }
-                    | KeyEvent {
-                        code: KeyCode::Char('k'),
-                        modifiers: KeyModifiers::NONE,
-                        ..
                     } => {
                         if player.search_mode {
                             player.move_selection_in_search(-1);
@@ -890,17 +885,40 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                     }
 
                     KeyEvent {
-                        code: KeyCode::Down,
+                        code: KeyCode::Char('k'),
                         modifiers: KeyModifiers::NONE,
                         ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('k');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
+                        } else {
+                            player.move_selection(-1);
+                        }
                     }
-                    | KeyEvent {
-                        code: KeyCode::Char('j'),
+
+                    KeyEvent {
+                        code: KeyCode::Down,
                         modifiers: KeyModifiers::NONE,
                         ..
                     } => {
                         if player.search_mode {
                             player.move_selection_in_search(1);
+                        } else {
+                            player.move_selection(1);
+                        }
+                    }
+
+                    KeyEvent {
+                        code: KeyCode::Char('j'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => {
+                        if player.search_mode {
+                            player.search_query.push('j');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
                         } else {
                             player.move_selection(1);
                         }
@@ -985,9 +1003,11 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         ..
                     } => {
                         if player.search_mode {
-                            player.move_selection_in_search(1);
+                            player.search_query.push('n');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
                         }
-                        // In normal mode, 'n' has no special meaning, fall through to default char handler
+                        // In normal mode, 'n' has no special meaning
                     }
 
                     KeyEvent {
@@ -996,7 +1016,9 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         ..
                     } => {
                         if player.search_mode {
-                            player.move_selection_in_search(-1);
+                            player.search_query.push('N');
+                            let query = player.search_query.clone();
+                            player.fuzzy_search(&query);
                         }
                         // In normal mode, 'N' has no special meaning, ignore
                     }
