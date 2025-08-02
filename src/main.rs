@@ -98,7 +98,7 @@ impl Player {
         };
 
         let filtered_songs: Vec<usize> = (0..songs.len()).collect();
-        
+
         let player = Player {
             songs,
             current_index: 0,
@@ -141,37 +141,30 @@ impl Player {
         self.seek_offset = Duration::from_secs(0);
         if let Some(ref sink) = self.sink {
             let song = &self.songs[index];
-            match std::fs::File::open(&song.path) {
-                Ok(file) => {
-                    match Decoder::new(file) {
-                        Ok(source) => {
-                            // Try to get duration from the source
-                            let total_duration = source.total_duration();
+            match create_audio_source(&song.path) {
+                Ok(source) => {
+                    // Try to get duration from the source
+                    let total_duration = source.total_duration();
 
-                            let sink = sink.lock().unwrap();
-                            sink.stop();
+                    let sink = sink.lock().unwrap();
+                    sink.stop();
 
-                            // If we have a seek offset, we need to skip ahead
-                            if self.seek_offset > Duration::from_secs(0) {
-                                let skipped_source = source.skip_duration(self.seek_offset);
-                                sink.append(skipped_source);
-                            } else {
-                                sink.append(source);
-                            }
-
-                            sink.play();
-                            self.is_playing = true;
-                            self.playback_start = Some(Instant::now());
-                            self.song_duration = total_duration;
-                            self.update_terminal_title();
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: Could not decode audio file '{}': {e}", song.name);
-                        }
+                    // If we have a seek offset, we need to skip ahead
+                    if self.seek_offset > Duration::from_secs(0) {
+                        let skipped_source = source.skip_duration(self.seek_offset);
+                        sink.append(skipped_source);
+                    } else {
+                        sink.append(source);
                     }
+
+                    sink.play();
+                    self.is_playing = true;
+                    self.playback_start = Some(Instant::now());
+                    self.song_duration = total_duration;
+                    self.update_terminal_title();
                 }
                 Err(e) => {
-                    eprintln!("Warning: Could not open audio file '{}': {e}", song.name);
+                    eprintln!("Warning: Could not decode audio file '{}': {e}", song.name);
                 }
             }
         } else {
@@ -369,24 +362,21 @@ impl Player {
             self.filtered_songs = (0..self.songs.len()).collect();
         } else {
             let query_lower = query.to_lowercase();
-            let mut matches: Vec<(usize, f32)> = self.songs
+            let mut matches: Vec<(usize, f32)> = self
+                .songs
                 .iter()
                 .enumerate()
                 .filter_map(|(index, song)| {
                     let song_name_lower = song.name.to_lowercase();
                     let score = Self::fuzzy_match_score(&query_lower, &song_name_lower);
-                    if score > 0.0 {
-                        Some((index, score))
-                    } else {
-                        None
-                    }
+                    if score > 0.0 { Some((index, score)) } else { None }
                 })
                 .collect();
-            
+
             matches.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             self.filtered_songs = matches.into_iter().map(|(index, _)| index).collect();
         }
-        
+
         if !self.filtered_songs.is_empty() {
             self.selected_index = self.filtered_songs[0];
             self.list_state.select(Some(0));
@@ -397,25 +387,25 @@ impl Player {
         if query.is_empty() {
             return 1.0;
         }
-        
+
         if text.contains(query) {
             let exact_match_bonus = if text == query { 2.0 } else { 1.5 };
             let starts_with_bonus = if text.starts_with(query) { 1.2 } else { 1.0 };
             return exact_match_bonus * starts_with_bonus;
         }
-        
+
         let mut score = 0.0;
         let query_chars: Vec<char> = query.chars().collect();
         let text_chars: Vec<char> = text.chars().collect();
         let mut query_index = 0;
-        
+
         for (text_index, text_char) in text_chars.iter().enumerate() {
             if query_index < query_chars.len() && *text_char == query_chars[query_index] {
                 score += 1.0 / (text_index as f32 + 1.0);
                 query_index += 1;
             }
         }
-        
+
         if query_index == query_chars.len() {
             score / query_chars.len() as f32
         } else {
@@ -449,10 +439,7 @@ impl Player {
             return;
         }
 
-        let current_filtered_index = self.filtered_songs
-            .iter()
-            .position(|&index| index == self.selected_index)
-            .unwrap_or(0);
+        let current_filtered_index = self.filtered_songs.iter().position(|&index| index == self.selected_index).unwrap_or(0);
 
         let new_filtered_index = if direction > 0 {
             (current_filtered_index + 1) % self.filtered_songs.len()
@@ -474,7 +461,7 @@ impl Player {
         if self.songs.is_empty() {
             return;
         }
-        
+
         if self.search_mode {
             if !self.filtered_songs.is_empty() {
                 self.selected_index = self.filtered_songs[0];
@@ -490,7 +477,7 @@ impl Player {
         if self.songs.is_empty() {
             return;
         }
-        
+
         if self.search_mode {
             if !self.filtered_songs.is_empty() {
                 let last_index = self.filtered_songs.len() - 1;
@@ -535,6 +522,14 @@ fn load_mp3_files() -> Result<Vec<Song>, Box<dyn std::error::Error>> {
     Ok(songs)
 }
 
+fn create_audio_source(path: &PathBuf) -> Result<Box<dyn Source<Item = i16> + Send>, Box<dyn std::error::Error>> {
+    // For now, just use rodio's built-in decoder
+    // AAC support would require more complex implementation
+    let file = std::fs::File::open(path)?;
+    let source = Decoder::new(file)?;
+    Ok(Box::new(source))
+}
+
 fn visit_dir(dir: &PathBuf, songs: &mut Vec<Song>) -> Result<(), Box<dyn std::error::Error>> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
@@ -544,7 +539,8 @@ fn visit_dir(dir: &PathBuf, songs: &mut Vec<Song>) -> Result<(), Box<dyn std::er
             if path.is_dir() {
                 visit_dir(&path, songs)?;
             } else if let Some(extension) = path.extension() {
-                if extension.to_str().unwrap_or("").to_lowercase() == "mp3" {
+                // or .aac
+                if extension.to_str().unwrap_or("").to_lowercase() == "mp3" || extension.to_str().unwrap_or("").to_lowercase() == "aac" {
                     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Unknown").to_string();
 
                     songs.push(Song { name, path: path.clone() });
@@ -579,7 +575,11 @@ fn ui(f: &mut Frame, player: &Player) {
         .iter()
         .enumerate()
         .map(|(_display_index, &(actual_index, song))| {
-            let playing_indicator = if actual_index == player.current_index && player.is_playing { "♪ " } else { "  " };
+            let playing_indicator = if actual_index == player.current_index && player.is_playing {
+                "♪ "
+            } else {
+                "  "
+            };
 
             let content = format!("{playing_indicator}{}. {}", actual_index + 1, song.name);
 
@@ -625,7 +625,6 @@ fn ui(f: &mut Frame, player: &Player) {
         0.0
     };
 
-    
     let progress_label_text = if let Some(duration) = total {
         format!(" {}/{} ", Player::format_duration(elapsed), Player::format_duration(duration))
     } else {
@@ -649,7 +648,7 @@ fn ui(f: &mut Frame, player: &Player) {
 
     // Status
     let mode_text = if player.random_mode { "RANDOM" } else { "NORMAL" };
-    let song_count = if player.search_mode { 
+    let song_count = if player.search_mode {
         format!("{}/{}", player.filtered_songs.len(), player.songs.len())
     } else {
         player.songs.len().to_string()
@@ -673,14 +672,12 @@ fn ui(f: &mut Frame, player: &Player) {
         ])]
     };
 
-    let status = Paragraph::new(status_content)
-        .alignment(Alignment::Left)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Status")
-                .border_style(Style::default().fg(PRIMARY_COLOR)),
-        );
+    let status = Paragraph::new(status_content).alignment(Alignment::Left).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Status")
+            .border_style(Style::default().fg(PRIMARY_COLOR)),
+    );
     f.render_widget(status, chunks[3]);
 
     // Controls popup
@@ -839,7 +836,7 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                 if key.code != KeyCode::Char('g') || key.modifiers != KeyModifiers::NONE {
                     player.g_pressed = false;
                 }
-                
+
                 match key {
                     KeyEvent {
                         code: KeyCode::Esc,
@@ -854,7 +851,7 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                             break;
                         }
                     }
-                    
+
                     KeyEvent {
                         code: KeyCode::Char('c'),
                         modifiers: KeyModifiers::CONTROL,
@@ -865,7 +862,8 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         code: KeyCode::Up,
                         modifiers: KeyModifiers::NONE,
                         ..
-                    } | KeyEvent {
+                    }
+                    | KeyEvent {
                         code: KeyCode::Char('k'),
                         modifiers: KeyModifiers::NONE,
                         ..
@@ -881,7 +879,8 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                         code: KeyCode::Down,
                         modifiers: KeyModifiers::NONE,
                         ..
-                    } | KeyEvent {
+                    }
+                    | KeyEvent {
                         code: KeyCode::Char('j'),
                         modifiers: KeyModifiers::NONE,
                         ..
