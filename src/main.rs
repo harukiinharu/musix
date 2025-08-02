@@ -19,6 +19,10 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph},
 };
 use rodio::{Decoder, OutputStream, Sink, Source};
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
 
 #[derive(Clone)]
 struct Song {
@@ -139,7 +143,7 @@ impl Player {
         self.current_index = index;
         self.selected_index = index;
         self.list_state.select(Some(self.selected_index));
-        
+
         // Only reset seek_offset if it's a different song
         if !is_same_song {
             self.seek_offset = Duration::from_secs(0);
@@ -148,8 +152,8 @@ impl Player {
             let song = &self.songs[index];
             match create_audio_source(&song.path) {
                 Ok(source) => {
-                    // Try to get duration from the source
-                    let total_duration = source.total_duration();
+                    // Try to get duration from symphonia first, fallback to source
+                    let total_duration = get_audio_duration(&song.path).or_else(|| source.total_duration());
 
                     let sink = sink.lock().unwrap();
                     sink.stop();
@@ -312,7 +316,7 @@ impl Player {
         if !self.is_playing && !self.songs.is_empty() {
             if let Some(ref sink) = self.sink {
                 let sink = sink.lock().unwrap();
-                
+
                 // Check if sink is empty (which happens after pause in some cases)
                 if sink.empty() {
                     // If sink is empty, we need to reload the song from the current position
@@ -544,6 +548,46 @@ fn create_audio_source(path: &PathBuf) -> Result<Box<dyn Source<Item = i16> + Se
     Ok(Box::new(source))
 }
 
+fn get_audio_duration(path: &PathBuf) -> Option<Duration> {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return None,
+    };
+
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(extension) = path.extension() {
+        if let Some(ext_str) = extension.to_str() {
+            hint.with_extension(ext_str);
+        }
+    }
+
+    let meta_opts: MetadataOptions = Default::default();
+    let fmt_opts: FormatOptions = Default::default();
+
+    match symphonia::default::get_probe().format(&hint, mss, &fmt_opts, &meta_opts) {
+        Ok(mut probed) => {
+            let format = &mut probed.format;
+            let track = match format
+                .tracks()
+                .iter()
+                .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+            {
+                Some(track) => track,
+                None => return None,
+            };
+
+            let time_base = track.codec_params.time_base?;
+            let n_frames = track.codec_params.n_frames?;
+
+            let duration_secs = n_frames as f64 * time_base.numer as f64 / time_base.denom as f64;
+            Some(Duration::from_secs_f64(duration_secs))
+        }
+        Err(_) => None,
+    }
+}
+
 fn visit_dir(dir: &PathBuf, songs: &mut Vec<Song>) -> Result<(), Box<dyn std::error::Error>> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
@@ -553,8 +597,8 @@ fn visit_dir(dir: &PathBuf, songs: &mut Vec<Song>) -> Result<(), Box<dyn std::er
             if path.is_dir() {
                 visit_dir(&path, songs)?;
             } else if let Some(extension) = path.extension() {
-                // or .aac
-                if extension.to_str().unwrap_or("").to_lowercase() == "mp3" || extension.to_str().unwrap_or("").to_lowercase() == "aac" {
+                let ext_lower = extension.to_str().unwrap_or("").to_lowercase();
+                if ext_lower == "mp3" || ext_lower == "aac" || ext_lower == "wav" || ext_lower == "flac" || ext_lower == "opus" {
                     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Unknown").to_string();
 
                     songs.push(Song { name, path: path.clone() });
