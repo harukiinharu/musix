@@ -135,10 +135,15 @@ impl Player {
             return Ok(());
         }
 
+        let is_same_song = self.current_index == index;
         self.current_index = index;
         self.selected_index = index;
         self.list_state.select(Some(self.selected_index));
-        self.seek_offset = Duration::from_secs(0);
+        
+        // Only reset seek_offset if it's a different song
+        if !is_same_song {
+            self.seek_offset = Duration::from_secs(0);
+        }
         if let Some(ref sink) = self.sink {
             let song = &self.songs[index];
             match create_audio_source(&song.path) {
@@ -307,10 +312,19 @@ impl Player {
         if !self.is_playing && !self.songs.is_empty() {
             if let Some(ref sink) = self.sink {
                 let sink = sink.lock().unwrap();
-                sink.play();
-                self.is_playing = true;
-                self.playback_start = Some(Instant::now());
-                self.update_terminal_title();
+                
+                // Check if sink is empty (which happens after pause in some cases)
+                if sink.empty() {
+                    // If sink is empty, we need to reload the song from the current position
+                    drop(sink);
+                    let _ = self.play_song(self.current_index);
+                } else {
+                    // If sink still has content, just resume playback
+                    sink.play();
+                    self.is_playing = true;
+                    self.playback_start = Some(Instant::now());
+                    self.update_terminal_title();
+                }
             }
         }
     }
