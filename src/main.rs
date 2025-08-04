@@ -41,12 +41,14 @@ struct Player {
     _stream_handle: Option<Box<dyn std::any::Any>>,
     sink: Option<Arc<Mutex<Sink>>>,
     is_playing: bool,
+    is_paused: bool,
     loop_mode: bool,
     random_mode: bool,
     list_state: ListState,
     playback_start: Option<Instant>,
     song_duration: Option<Duration>,
     seek_offset: Duration,
+    pause_time: Option<Instant>,
     show_controls_popup: bool,
     search_mode: bool,
     search_query: String,
@@ -111,12 +113,14 @@ impl Player {
             _stream_handle: stream_handle,
             sink,
             is_playing: false,
+            is_paused: false,
             loop_mode: true,
             random_mode: false,
             list_state,
             playback_start: None,
             song_duration: None,
             seek_offset: Duration::from_secs(0),
+            pause_time: None,
             show_controls_popup: false,
             search_mode: false,
             search_query: String::new(),
@@ -148,6 +152,11 @@ impl Player {
         if !is_same_song {
             self.seek_offset = Duration::from_secs(0);
         }
+        
+        // Reset pause state when playing a song
+        self.is_paused = false;
+        self.pause_time = None;
+        
         if let Some(ref sink) = self.sink {
             let song = &self.songs[index];
             match create_audio_source(&song.path) {
@@ -158,10 +167,32 @@ impl Player {
                     let sink = sink.lock().unwrap();
                     sink.stop();
 
-                    // If we have a seek offset, we need to skip ahead
+                    // Optimized seeking logic
                     if self.seek_offset > Duration::from_secs(0) {
-                        let skipped_source = source.skip_duration(self.seek_offset);
-                        sink.append(skipped_source);
+                        // First try the fast path: append source and use try_seek
+                        sink.append(source);
+                        
+                        match sink.try_seek(self.seek_offset) {
+                            Ok(()) => {
+                                // Fast seek succeeded, we're done
+                            }
+                            Err(_) => {
+                                // Fast seek failed, fall back to skip_duration
+                                // But first we need to reload the source since it was consumed
+                                sink.stop();
+                                
+                                if let Ok(source) = create_audio_source(&song.path) {
+                                    let skipped_source = source.skip_duration(self.seek_offset);
+                                    sink.append(skipped_source);
+                                } else {
+                                    // If we can't reload, reset seek offset and play from beginning
+                                    self.seek_offset = Duration::from_secs(0);
+                                    if let Ok(source) = create_audio_source(&song.path) {
+                                        sink.append(source);
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         sink.append(source);
                     }
@@ -190,7 +221,7 @@ impl Player {
         }
 
         // If no song has ever been played (initial state), play the selected song
-        if self.playback_start.is_none() && !self.is_playing {
+        if self.playback_start.is_none() && !self.is_playing && !self.is_paused {
             self.play_song(self.selected_index)?;
             return Ok(());
         }
@@ -202,10 +233,8 @@ impl Player {
             // If selected song is the same as current playing song, toggle play/pause
             if self.is_playing {
                 self.pause_playback();
-                self.update_terminal_title();
             } else {
                 self.resume_playback();
-                self.update_terminal_title();
             }
         }
         Ok(())
@@ -296,40 +325,95 @@ impl Player {
     }
 
     fn pause_playback(&mut self) {
-        if self.is_playing {
-            // Store current progress before pausing
-            if let Some(start_time) = self.playback_start {
-                self.seek_offset += start_time.elapsed();
-            }
-
+        if self.is_playing && !self.is_paused {
             if let Some(ref sink) = self.sink {
                 let sink = sink.lock().unwrap();
                 sink.pause();
             }
             self.is_playing = false;
+            self.is_paused = true;
+            self.pause_time = Some(Instant::now());
+            
+            // Update seek_offset only if we have a valid playback_start
+            if let Some(start_time) = self.playback_start {
+                self.seek_offset += start_time.elapsed();
+            }
+            
             self.playback_start = None;
             self.update_terminal_title();
         }
     }
 
     fn resume_playback(&mut self) {
-        if !self.is_playing && !self.songs.is_empty() {
+        if !self.is_playing && self.is_paused && !self.songs.is_empty() {
             if let Some(ref sink) = self.sink {
                 let sink = sink.lock().unwrap();
-
-                // Check if sink is empty (which happens after pause in some cases)
-                if sink.empty() {
-                    // If sink is empty, we need to reload the song from the current position
-                    drop(sink);
-                    let _ = self.play_song(self.current_index);
-                } else {
-                    // If sink still has content, just resume playback
+                
+                // Try to resume directly first
+                if !sink.empty() {
                     sink.play();
                     self.is_playing = true;
+                    self.is_paused = false;
                     self.playback_start = Some(Instant::now());
+                    self.pause_time = None;
+                    self.update_terminal_title();
+                    return;
+                }
+                
+                // If sink is empty, try to seek to current position using try_seek
+                drop(sink);
+                
+                // Load fresh audio source and seek to position
+                if let Ok(source) = create_audio_source(&self.songs[self.current_index].path) {
+                    let sink = self.sink.as_ref().unwrap().lock().unwrap();
+                    
+                    // Clear the sink and add new source
+                    sink.stop();
+                    
+                    // If we have a seek offset, try to use try_seek first
+                    if self.seek_offset > Duration::from_secs(0) {
+                        sink.append(source);
+                        
+                        // Try seeking with try_seek - this is much faster than skip_duration
+                        match sink.try_seek(self.seek_offset) {
+                            Ok(()) => {
+                                // Seeking succeeded
+                                sink.play();
+                                self.is_playing = true;
+                                self.is_paused = false;
+                                self.playback_start = Some(Instant::now());
+                                self.pause_time = None;
+                                self.update_terminal_title();
+                                return;
+                            }
+                            Err(_) => {
+                                // try_seek failed, fall back to skip_duration but optimize it
+                                sink.stop();
+                                
+                                // Reload with skip_duration as fallback
+                                if let Ok(source) = create_audio_source(&self.songs[self.current_index].path) {
+                                    let skipped_source = source.skip_duration(self.seek_offset);
+                                    sink.append(skipped_source);
+                                    sink.play();
+                                }
+                            }
+                        }
+                    } else {
+                        // No seek needed, just play from beginning
+                        sink.append(source);
+                        sink.play();
+                    }
+                    
+                    self.is_playing = true;
+                    self.is_paused = false;
+                    self.playback_start = Some(Instant::now());
+                    self.pause_time = None;
                     self.update_terminal_title();
                 }
             }
+        } else if !self.is_playing && !self.is_paused && !self.songs.is_empty() {
+            // Handle initial play state (not paused, just stopped)
+            let _ = self.play_song(self.current_index);
         }
     }
 
@@ -1263,6 +1347,7 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                 if sink.empty() {
                     drop(sink);
                     player.is_playing = false;
+                    player.is_paused = false;
                     player.playback_start = None;
                     player.seek_offset = Duration::from_secs(0);
                     player.next_song()?;
