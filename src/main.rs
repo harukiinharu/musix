@@ -1,5 +1,5 @@
 use std::{
-    fs, io,
+    env, fs, io,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -32,6 +32,42 @@ struct Song {
 
 const HIGHLIGHT_COLOR: Color = Color::Rgb(0, 255, 150);
 const PRIMARY_COLOR: Color = Color::LightGreen;
+// const SECONDARY_COLOR: Color = Color::Rgb(200, 200, 200);
+
+// Smart color detection function
+fn get_text_color() -> Color {
+    // Check terminal environment
+    if let Ok(term) = env::var("TERM_PROGRAM") {
+        match term.as_str() {
+            "iTerm.app" => {
+                // For iTerm2, use a color that works well in both light and dark modes
+                Color::Rgb(127, 127, 127) // Dark gray - visible on both backgrounds
+            }
+            "vscode" => {
+                // VS Code terminal usually handles Color::Reset well
+                Color::Reset
+            }
+            _ => Color::Reset,
+        }
+    } else {
+        // Check if we're in a light or dark terminal by examining COLORFGBG
+        if let Ok(colorfgbg) = env::var("COLORFGBG") {
+            // COLORFGBG format is usually "foreground;background"
+            // High background numbers (> 7) usually indicate light themes
+            if let Some(bg) = colorfgbg.split(';').nth(1) {
+                if let Ok(bg_num) = bg.parse::<u8>() {
+                    if bg_num > 7 {
+                        // Light background - use dark text
+                        return Color::Rgb(50, 50, 50);
+                    }
+                }
+            }
+        }
+
+        // Default fallback
+        Color::Reset
+    }
+}
 
 struct Player {
     songs: Vec<Song>,
@@ -152,11 +188,11 @@ impl Player {
         if !is_same_song {
             self.seek_offset = Duration::from_secs(0);
         }
-        
+
         // Reset pause state when playing a song
         self.is_paused = false;
         self.pause_time = None;
-        
+
         if let Some(ref sink) = self.sink {
             let song = &self.songs[index];
             match create_audio_source(&song.path) {
@@ -171,7 +207,7 @@ impl Player {
                     if self.seek_offset > Duration::from_secs(0) {
                         // First try the fast path: append source and use try_seek
                         sink.append(source);
-                        
+
                         match sink.try_seek(self.seek_offset) {
                             Ok(()) => {
                                 // Fast seek succeeded, we're done
@@ -180,7 +216,7 @@ impl Player {
                                 // Fast seek failed, fall back to skip_duration
                                 // But first we need to reload the source since it was consumed
                                 sink.stop();
-                                
+
                                 if let Ok(source) = create_audio_source(&song.path) {
                                     let skipped_source = source.skip_duration(self.seek_offset);
                                     sink.append(skipped_source);
@@ -333,12 +369,12 @@ impl Player {
             self.is_playing = false;
             self.is_paused = true;
             self.pause_time = Some(Instant::now());
-            
+
             // Update seek_offset only if we have a valid playback_start
             if let Some(start_time) = self.playback_start {
                 self.seek_offset += start_time.elapsed();
             }
-            
+
             self.playback_start = None;
             self.update_terminal_title();
         }
@@ -348,7 +384,7 @@ impl Player {
         if !self.is_playing && self.is_paused && !self.songs.is_empty() {
             if let Some(ref sink) = self.sink {
                 let sink = sink.lock().unwrap();
-                
+
                 // Try to resume directly first
                 if !sink.empty() {
                     sink.play();
@@ -359,21 +395,21 @@ impl Player {
                     self.update_terminal_title();
                     return;
                 }
-                
+
                 // If sink is empty, try to seek to current position using try_seek
                 drop(sink);
-                
+
                 // Load fresh audio source and seek to position
                 if let Ok(source) = create_audio_source(&self.songs[self.current_index].path) {
                     let sink = self.sink.as_ref().unwrap().lock().unwrap();
-                    
+
                     // Clear the sink and add new source
                     sink.stop();
-                    
+
                     // If we have a seek offset, try to use try_seek first
                     if self.seek_offset > Duration::from_secs(0) {
                         sink.append(source);
-                        
+
                         // Try seeking with try_seek - this is much faster than skip_duration
                         match sink.try_seek(self.seek_offset) {
                             Ok(()) => {
@@ -389,7 +425,7 @@ impl Player {
                             Err(_) => {
                                 // try_seek failed, fall back to skip_duration but optimize it
                                 sink.stop();
-                                
+
                                 // Reload with skip_duration as fallback
                                 if let Ok(source) = create_audio_source(&self.songs[self.current_index].path) {
                                     let skipped_source = source.skip_duration(self.seek_offset);
@@ -403,7 +439,7 @@ impl Player {
                         sink.append(source);
                         sink.play();
                     }
-                    
+
                     self.is_playing = true;
                     self.is_paused = false;
                     self.playback_start = Some(Instant::now());
@@ -672,11 +708,11 @@ fn get_audio_duration(path: &PathBuf) -> Option<Duration> {
             if let Some(sample_rate) = track.codec_params.sample_rate {
                 // Store codec type to avoid borrowing issues
                 let codec_type = track.codec_params.codec;
-                
+
                 // Try to read through the entire format to count samples
                 let mut packet_count = 0u64;
                 let mut sample_count = 0u64;
-                
+
                 loop {
                     match format.next_packet() {
                         Ok(_packet) => {
@@ -697,7 +733,7 @@ fn get_audio_duration(path: &PathBuf) -> Option<Duration> {
                         break;
                     }
                 }
-                
+
                 if sample_count > 0 {
                     let duration_secs = sample_count as f64 / sample_rate as f64;
                     return Some(Duration::from_secs_f64(duration_secs));
@@ -763,12 +799,13 @@ fn ui(f: &mut Frame, player: &Player) {
 
             let content = format!("{playing_indicator}{}. {}", actual_index + 1, song.name);
 
+            let text_color = get_text_color();
             let style = if actual_index == player.current_index && player.is_playing {
                 Style::default().fg(HIGHLIGHT_COLOR).add_modifier(Modifier::BOLD)
             } else if actual_index == player.selected_index {
                 Style::default().fg(PRIMARY_COLOR)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(text_color)
             };
 
             ListItem::new(content).style(style)
