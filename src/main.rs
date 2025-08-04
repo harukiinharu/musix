@@ -454,43 +454,70 @@ impl Player {
     }
 
     fn seek(&mut self, offset_seconds: i32) {
-        if !self.songs.is_empty() && self.is_playing {
-            if let Some(ref sink) = self.sink {
-                // Get current actual position (including elapsed time since playback start)
-                let current_position = if let Some(start_time) = self.playback_start {
-                    self.seek_offset + start_time.elapsed()
-                } else {
-                    self.seek_offset
-                };
+        if self.songs.is_empty() {
+            return;
+        }
 
-                let seek_duration = Duration::from_secs(offset_seconds.unsigned_abs().into());
-                let new_position = if offset_seconds < 0 {
-                    // Seek backward
-                    if current_position > seek_duration {
-                        current_position - seek_duration
-                    } else {
-                        Duration::from_secs(0)
-                    }
-                } else {
-                    // Seek forward
-                    current_position + seek_duration
-                };
+        // Calculate current position based on play state
+        let current_position = if self.is_playing {
+            if let Some(start_time) = self.playback_start {
+                self.seek_offset + start_time.elapsed()
+            } else {
+                self.seek_offset
+            }
+        } else {
+            // When paused, use the stored seek_offset
+            self.seek_offset
+        };
 
-                // Try to seek using rodio's try_seek method
-                let sink = sink.lock().unwrap();
-                match sink.try_seek(new_position) {
+        let seek_duration = Duration::from_secs(offset_seconds.unsigned_abs().into());
+        let new_position = if offset_seconds < 0 {
+            // Seek backward
+            if current_position > seek_duration {
+                current_position - seek_duration
+            } else {
+                Duration::from_secs(0)
+            }
+        } else {
+            // Seek forward
+            current_position + seek_duration
+        };
+
+        // Don't seek beyond song duration if we know it
+        let final_position = if let Some(duration) = self.song_duration {
+            new_position.min(duration)
+        } else {
+            new_position
+        };
+
+        // Update seek_offset immediately to provide instant feedback
+        self.seek_offset = final_position;
+
+        if let Some(ref sink) = self.sink {
+            let sink = sink.lock().unwrap();
+            
+            if self.is_playing {
+                // When playing, try smooth seeking first
+                match sink.try_seek(final_position) {
                     Ok(()) => {
-                        // Seeking succeeded, update our tracking variables
-                        self.seek_offset = new_position;
+                        // Smooth seek succeeded, just update timing
                         self.playback_start = Some(Instant::now());
                     }
                     Err(_) => {
-                        // Seeking failed, fall back to restarting from new position
+                        // Smooth seek failed, do a quick restart without audio glitches
                         drop(sink);
-                        self.seek_offset = new_position;
+                        
+                        // Temporarily pause to avoid audio artifacts
+                        self.is_playing = false;
+                        
+                        // Quick restart from new position
                         let _ = self.play_song(self.current_index);
                     }
                 }
+            } else if self.is_paused {
+                // When paused, just update the seek position
+                // The position will be applied when resuming
+                // No need to modify the sink while paused
             }
         }
     }
