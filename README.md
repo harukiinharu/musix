@@ -31,7 +31,7 @@ A minimalist terminal-based MP3 music player built with Rust.
 
 ```bash
 # Clone the repository
-git clone git@github.com:coolcode/musix.git
+git clone https://github.com/harukiinharu/musix.git
 cd musix
 
 # Build and run
@@ -47,7 +47,7 @@ cargo build --release
 2. **Navigate**: Use `j/k` or arrow keys to browse songs
 3. **Search**: Press `/` and type to find songs instantly
 4. **Play**: Press `Enter` or `Space` to play selected song
-5. **Jump**: Use `gg` (first song) or `G` (last song)
+5. **Jump**: Use `g` (first song) or `G` (last song)
 6. **Help**: Press `x` to see all controls
 7. **Quit**: Press `q` or `Esc` to exit
 
@@ -90,7 +90,7 @@ ln -s /path/to/your/music ./data
 | `↑/↓` or `j/k` | Navigate songs (vim-style) |
 | `Space/↵` | Play/pause (same functionality) |
 | `←/→` or `h/l` | Play previous/next song |
-| `gg` / `G` | Jump to first/last song |
+| `g` / `G` | Jump to first/last song |
 | `,` / `.` | Seek backward/forward 5 seconds |
 | `<` / `>` | Same as above |
 | `r` | Toggle Random mode |
@@ -136,7 +136,7 @@ MUSIX features a clean, 4-panel interface that maximizes space for your music:
 │ ↑/↓ or j/k - Navigate songs     │
 │ Space/↵    - Play/Pause         │
 │ ←/→ or h/l - Play prev/next song│
-│ gg/G       - Jump to first/last │
+│ g/G       - Jump to first/last │
 │ /          - Enter search mode  │
 │ n/N        - Next/prev search   │
 │ ,/.        - Seek ±5 seconds    │
@@ -176,7 +176,7 @@ MUSIX features a clean, 4-panel interface that maximizes space for your music:
 
 ### Vim-Style Navigation
 - **Movement**: `hjkl` for navigation (h=left, j=down, k=up, l=right)
-- **Jumping**: `gg` jumps to first song, `G` jumps to last song
+- **Jumping**: `g` jumps to first song, `G` jumps to last song
 - **Search Navigation**: `n/N` for next/previous search results
 - **Quit**: `q` as alternative to Escape
 

@@ -495,7 +495,7 @@ impl Player {
 
         if let Some(ref sink) = self.sink {
             let sink = sink.lock().unwrap();
-            
+
             if self.is_playing {
                 // When playing, try smooth seeking first
                 match sink.try_seek(final_position) {
@@ -506,10 +506,10 @@ impl Player {
                     Err(_) => {
                         // Smooth seek failed, do a quick restart without audio glitches
                         drop(sink);
-                        
+
                         // Temporarily pause to avoid audio artifacts
                         self.is_playing = false;
-                        
+
                         // Quick restart from new position
                         let _ = self.play_song(self.current_index);
                     }
@@ -946,7 +946,7 @@ fn ui(f: &mut Frame, player: &Player) {
                 Span::raw(" - Play prev/next song"),
             ]),
             Line::from(vec![
-                Span::styled(" gg/G      ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
+                Span::styled(" g/G      ", Style::default().fg(PRIMARY_COLOR).add_modifier(Modifier::BOLD)),
                 Span::raw(" - Jump to first/last"),
             ]),
             Line::from(vec![
@@ -1263,14 +1263,8 @@ fn main_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, player: &mut
                             let query = player.search_query.clone();
                             player.fuzzy_search(&query);
                         } else {
-                            if player.g_pressed {
-                                // Second 'g' - jump to first song
-                                player.jump_to_first();
-                                player.g_pressed = false;
-                            } else {
-                                // First 'g' - set flag and wait for second 'g'
-                                player.g_pressed = true;
-                            }
+                            player.jump_to_first();
+                            player.g_pressed = false;
                         }
                     }
 
