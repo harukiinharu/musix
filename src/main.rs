@@ -783,7 +783,7 @@ fn visit_dir(dir: &PathBuf, songs: &mut Vec<Song>) -> Result<(), Box<dyn std::er
                 visit_dir(&path, songs)?;
             } else if let Some(extension) = path.extension() {
                 let ext_lower = extension.to_str().unwrap_or("").to_lowercase();
-                if ext_lower == "mp3" || ext_lower == "aac" || ext_lower == "wav" || ext_lower == "flac" || ext_lower == "opus" {
+                if ext_lower == "mp3" || ext_lower == "m4a" || ext_lower == "wav" || ext_lower == "flac" || ext_lower == "opus" {
                     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Unknown").to_string();
 
                     songs.push(Song { name, path: path.clone() });
